@@ -7,10 +7,10 @@
     {
       id: "mazmorra-inicial",
       nivel: 1,
-      tamano: 15,
-      cantidadEnemigos: 3,
+      tamano: 8,
+      cantidadEnemigos: 2,
       nivelEnemigos: 1,
-      cantidadPOI: 0,
+      cantidadPOI: 1,
       bossId: "",
       usarAlIniciar: true,
       mensajes: {

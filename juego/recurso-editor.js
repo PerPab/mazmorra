@@ -10,6 +10,7 @@
   const storageKey = "juego.recursosCreados.v1";
   let projectDirectoryHandle = null;
   let selectedImage = "";
+  let selectedAudio = "";
 
   const classes = ["caballero", "bruja", "sacerdote", "asesino"];
   const bonusAttributes = [
@@ -101,6 +102,7 @@
     field("id", "ID único del POI (minúsculas y guiones)"),
     field("nivel", "Nivel mínimo del mapa", "number", { min: 1, value: 1 }),
     field("imagen", "Imagen", "image"),
+    field("sonido", "Sonido al abrir el aviso", "audio"),
     field("texto", "Texto descriptivo", "textarea"),
     field("lootId", "Botín opcional", "select", { options: [] }),
     field("enemigoId", "Enemigo o boss opcional", "select", { options: [] }),
@@ -113,6 +115,7 @@
     field("nivelEnemigos", "Nivel máximo de enemigos comunes", "number", { min: 1, value: 1 }),
     field("cantidadPOI", "Cantidad de POI personalizados", "number", { min: 0, value: 1 }),
     field("bossId", "Boss opcional", "select", { options: [] }),
+    field("audio", "Música del mapa (opcional)", "audio"),
     field("usarAlIniciar", "Usar este mapa al iniciar una partida nueva", "checkbox", { checked: true }),
     field("mensajePasillo", "Mensajes de pasillo (uno por línea)", "textarea"),
     field("mensajeBifurcacion", "Mensajes de bifurcación (uno por línea)", "textarea"),
@@ -243,6 +246,56 @@
       return wrapper;
     }
 
+    if (definition.type === "audio") {
+      const controls = document.createElement("div");
+      controls.className = "resource-audio-controls";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "resource-audio-button";
+      button.textContent = "Asignar audio…";
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "audio/mpeg,audio/mp3,audio/ogg,audio/wav,audio/webm";
+      input.className = "resource-audio-input";
+      input.setAttribute("aria-label", "Elegir archivo de audio");
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "resource-audio-clear";
+      clearButton.textContent = "Quitar audio";
+      clearButton.hidden = true;
+      const preview = document.createElement("audio");
+      preview.className = "resource-audio-preview";
+      preview.controls = true;
+      preview.hidden = true;
+      button.addEventListener("click", () => input.click());
+      input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          selectedAudio = String(reader.result || "");
+          preview.src = selectedAudio;
+          preview.hidden = false;
+          clearButton.hidden = false;
+          button.textContent = file.name;
+          status.textContent = "";
+        });
+        reader.addEventListener("error", () => { status.textContent = "No se pudo leer el audio."; });
+        reader.readAsDataURL(file);
+      });
+      clearButton.addEventListener("click", () => {
+        selectedAudio = "";
+        preview.removeAttribute("src");
+        preview.hidden = true;
+        clearButton.hidden = true;
+        button.textContent = "Asignar audio…";
+        input.value = "";
+      });
+      controls.append(button, clearButton, input, preview);
+      wrapper.append(controls);
+      return wrapper;
+    }
+
     if (definition.type === "multiselect") {
       const choices = document.createElement("div");
       choices.className = "resource-checkboxes";
@@ -325,6 +378,7 @@
   function renderFields(preserveStatus = false) {
     fields.replaceChildren();
     selectedImage = "";
+    selectedAudio = "";
     if (!preserveStatus) status.textContent = "";
     const kind = kindSelect.value;
     let definitions;
@@ -488,9 +542,44 @@
     record.data.imagen = relativePath;
   }
 
+  // Escribe un audio (data URL) en recursos/sonidos/<nombreBase>.<ext> y
+  // devuelve la ruta relativa resultante. La usan los campos de audio del editor.
+  async function copiarAudioAProyecto(root, dataUrl, nombreBase) {
+    const match = /^data:audio\/(mpeg|mp3|mp4|ogg|wav|webm|x-wav|aac);base64,([a-z0-9+/=]+)$/i.exec(dataUrl);
+    if (!match) throw new Error("No se pudo reconocer el audio. Selecciona un archivo MP3, OGG, WAV o WEBM.");
+    const bruto = match[1].toLowerCase();
+    const extension = (bruto === "mpeg" || bruto === "mp3" || bruto === "mp4") ? "mp3"
+      : (bruto === "x-wav" || bruto === "wav") ? "wav"
+      : bruto;
+    const idSeguro = String(nombreBase || "audio").replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "audio";
+    const relativePath = `recursos/sonidos/${idSeguro}.${extension}`;
+    let directory = root;
+    for (const segment of relativePath.split("/").slice(0, -1)) {
+      directory = await directory.getDirectoryHandle(segment, { create: true });
+    }
+    const audioHandle = await directory.getFileHandle(`${idSeguro}.${extension}`, { create: true });
+    const binary = window.atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    const writable = await audioHandle.createWritable();
+    await writable.write(bytes);
+    await writable.close();
+    return relativePath;
+  }
+
+  // Copia el audio del registro (sonido de POI o audio de mapa) al proyecto.
+  async function saveAudioAsProjectFile(root, record) {
+    const campo = record.kind === "mapa" ? "audio" : record.kind === "poi" ? "sonido" : null;
+    if (!campo) return;
+    const dataUrl = record.data[campo];
+    if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return;
+    record.data[campo] = await copiarAudioAProyecto(root, dataUrl, record.data.id);
+  }
+
   async function saveRecordToProject(record, skipIfAlreadyRegistered = false) {
     const root = await getProjectDirectory();
     await saveImageAsProjectFile(root, record);
+    await saveAudioAsProjectFile(root, record);
     const { relativePath, code } = codigoParaRegistro(record);
     const segments = relativePath.split("/");
     let directory = root;
@@ -535,6 +624,7 @@
       id: getValue("id").value.trim(),
       nivel: numberValue("nivel"),
       imagen: selectedImage,
+      sonido: selectedAudio,
       texto: getValue("texto").value.trim(),
       lootId: getValue("lootId").value,
       enemigoId: getValue("enemigoId").value,
@@ -551,6 +641,7 @@
       nivelEnemigos: numberValue("nivelEnemigos"),
       cantidadPOI: numberValue("cantidadPOI"),
       bossId: getValue("bossId").value,
+      audio: selectedAudio || null,
       usarAlIniciar: Boolean(getValue("usarAlIniciar").checked),
       mensajes: {
         pasillo: lines("mensajePasillo"),

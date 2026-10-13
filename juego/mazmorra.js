@@ -4,15 +4,17 @@
   const mapDisplay = document.querySelector(".map-display");
   const movementButtons = [...document.querySelectorAll(".direction-button[data-direction]")];
   const eventLog = document.querySelector(".event-log");
-  const poiPanel = document.querySelector(".poi-intro");
-  const poiImage = poiPanel?.querySelector(".poi-image");
-  const poiTitle = poiPanel?.querySelector(".poi-title");
-  const poiDescription = poiPanel?.querySelector(".poi-description");
-  const poiAction = poiPanel?.querySelector(".poi-action");
+  const poiDialog = document.querySelector(".poi-dialog");
+  const poiImage = poiDialog?.querySelector(".poi-image");
+  const poiTitle = poiDialog?.querySelector(".poi-title");
+  const poiDescription = poiDialog?.querySelector(".poi-description");
+  const poiAction = poiDialog?.querySelector(".poi-action");
+  const poiClose = poiDialog?.querySelector(".poi-close");
   if (!juego || !(mapDisplay instanceof HTMLElement) || movementButtons.length !== 4
-    || !(eventLog instanceof HTMLElement) || !(poiPanel instanceof HTMLElement)
+    || !(eventLog instanceof HTMLElement) || !(poiDialog instanceof HTMLDialogElement)
     || !(poiImage instanceof HTMLImageElement) || !(poiTitle instanceof HTMLElement)
-    || !(poiDescription instanceof HTMLElement) || !(poiAction instanceof HTMLButtonElement)) return;
+    || !(poiDescription instanceof HTMLElement) || !(poiAction instanceof HTMLButtonElement)
+    || !(poiClose instanceof HTMLButtonElement)) return;
 
   const FILAS_VISIBLES = 7;
   const COLUMNAS_VISIBLES = 7;
@@ -88,13 +90,18 @@
     return lista[Math.floor(Math.random() * lista.length)];
   }
 
-  function cerrarPOI() {
+  function limpiarPOI() {
     poiActivo = null;
-    poiPanel.hidden = true;
     poiImage.removeAttribute("src");
     poiImage.alt = "";
+    poiImage.hidden = true;
     poiAction.hidden = true;
     actualizarControles();
+  }
+
+  function cerrarPOI() {
+    if (poiDialog.open) poiDialog.close();
+    else limpiarPOI();
   }
 
   function mostrarPOI(poi) {
@@ -107,7 +114,11 @@
     poiDescription.textContent = poi.texto;
     poiAction.hidden = poi.tipo === "enemigo";
     poiAction.textContent = poi.accion ?? "Continuar";
-    poiPanel.hidden = false;
+    // En un encuentro con enemigos hay que decidir (Comenzar/Huir controla
+    // combate.js), así que el modal no ofrece "Cerrar" ni se descarta al fondo.
+    poiClose.hidden = poi.tipo === "enemigo";
+    if (poi.sonido) juego.sonidos?.reproducirRuta(poi.sonido, 0.6);
+    if (!poiDialog.open) poiDialog.showModal();
     actualizarControles();
   }
 
@@ -160,6 +171,7 @@
             : (plantilla?.texto ?? `${base.nombre} bloquea el pasillo.`),
           imagen: plantilla?.imagen ?? base.imagen,
           alt: plantilla?.alt ?? base.nombre,
+          audio: plantilla?.audio ?? null,
           enemigos,
           accion: "Comenzar encuentro",
           descubierto: false,
@@ -203,6 +215,7 @@
         texto: plantilla?.texto ?? "Encuentras algo entre las piedras.",
         imagen: plantilla?.imagen ?? "recursos/imagen/especiales/rupee.png",
         alt: plantilla?.alt ?? "Un tesoro oculto",
+        audio: plantilla?.audio ?? null,
         loot,
         accion: plantilla?.accion ?? "Continuar",
         descubierto: false,
@@ -243,6 +256,7 @@
       texto: plantillaSalida?.texto ?? "El camino termina aquí.",
       imagen: plantillaSalida?.imagen ?? "",
       alt: plantillaSalida?.alt ?? "",
+      audio: plantillaSalida?.audio ?? null,
       accion: plantillaSalida?.accion ?? "Continuar",
       descubierto: false,
       resuelto: false,
@@ -327,6 +341,7 @@
     const column = position.column + columnDelta;
     if (!esTransitable(row, column)) return;
     position = { row, column };
+    juego.sonidos?.reproducir("pasos");
     descubrirCercanias();
     dibujarMapa();
 
@@ -405,6 +420,20 @@
     dibujarMapa();
   });
 
+  // El botón "Cerrar" y el fondo descartan el aviso; el estado se limpia en el
+  // evento "close". En encuentros con enemigos no se puede descartar: hay que
+  // decidir Comenzar o Huir (los controla combate.js).
+  poiClose.addEventListener("click", () => poiDialog.close());
+  poiDialog.addEventListener("click", (event) => {
+    if (event.target === poiDialog && poiActivo?.tipo !== "enemigo") poiDialog.close();
+  });
+  poiDialog.addEventListener("cancel", (event) => {
+    if (poiActivo?.tipo === "enemigo") event.preventDefault();
+  });
+  poiDialog.addEventListener("close", () => {
+    limpiarPOI();
+  });
+
   movementButtons.forEach((button) => {
     button.addEventListener("click", () => mover(button.dataset.direction));
   });
@@ -429,7 +458,7 @@
   window.addEventListener("juego:estado-encuentro", (event) => {
     const { tipo, resultado } = event.detail ?? {};
     if (tipo === "combate-iniciado") {
-      poiPanel.hidden = true;
+      cerrarPOI();
     }
     if (tipo === "finalizado") {
       if (resultado === "victoria" && encounterRoom) {
@@ -437,8 +466,7 @@
         if (poi) poi.resuelto = true;
       }
       encounterRoom = null;
-      poiPanel.hidden = true;
-      poiActivo = null;
+      cerrarPOI();
       dibujarMapa();
     }
     actualizarControles();
@@ -452,7 +480,7 @@
       descubrirCercanias();
       encounterRoom = null;
       poiActivo = null;
-      poiPanel.hidden = true;
+      cerrarPOI();
       generarEncuentros();
       dibujarMapa();
     },

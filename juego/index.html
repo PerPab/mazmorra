@@ -11,8 +11,8 @@
     <main class="main-menu-screen" id="main-menu-screen" aria-labelledby="main-menu-title">
       <section class="main-menu-panel">
         <p class="main-menu-eyebrow">Una aventura de mazmorras</p>
-        <h1 id="main-menu-title">Juego</h1>
-        <p class="main-menu-subtitle">El destino del grupo está en tus manos.</p>
+        <h2 id="main-menu-title">LA MONTAÑA NEGRA</h2>
+        <!--<p class="main-menu-subtitle">El destino del grupo está en tus manos.</p>-->
         <nav class="main-menu-options" aria-label="Menú principal">
           <button class="main-menu-button" type="button" data-menu-action="continue" disabled>Continuar aventura</button>
           <button class="main-menu-button" type="button" data-menu-action="new">Partida nueva</button>
@@ -73,22 +73,7 @@
       </aside>
       <section class="interface-center" aria-label="Área principal del juego">
         <section class="scene-panel" aria-label="Escena del juego y futuros encuentros">
-        <section class="poi-intro" aria-live="polite" hidden>
-          <img class="poi-image" alt="">
-          <h2 class="poi-title"></h2>
-          <p class="poi-description"></p>
-          <button class="poi-action" type="button" hidden></button>
-        </section>
-        <div class="encounter-enemies" role="list" aria-label="Enemigos del encuentro" hidden></div>
-        </section>
-        <section class="encounter-toolbar" aria-label="Acciones del encuentro">
-          <div class="encounter-controls">
-            <h2>Encuentro</h2>
-          </div>
-          <div class="encounter-actions">
-            <button class="encounter-start" type="button" hidden>Comenzar encuentro</button>
-            <button class="encounter-flee" type="button" hidden>Huir</button>
-          </div>
+          <div class="encounter-enemies" role="list" aria-label="Enemigos del encuentro" hidden></div>
         </section>
         <section class="event-panel" aria-label="Mensajes del juego">
           <div class="event-log" role="log" aria-live="polite" aria-relevant="additions text">
@@ -247,6 +232,20 @@
         <button class="inventory-item-close" type="button">Cerrar</button>
       </div>
     </dialog>
+    <dialog class="poi-dialog" aria-labelledby="poi-dialog-title">
+      <div class="poi-dialog-header">
+        <p class="poi-dialog-eyebrow">Encuentro en la mazmorra</p>
+        <h2 class="poi-title" id="poi-dialog-title"></h2>
+      </div>
+      <img class="poi-image" alt="" hidden>
+      <p class="poi-description"></p>
+      <div class="poi-dialog-actions">
+        <button class="poi-action" type="button" hidden></button>
+        <button class="encounter-start" type="button" hidden>Comenzar encuentro</button>
+        <button class="encounter-flee" type="button" hidden>Huir</button>
+        <button class="poi-close" type="button">Cerrar</button>
+      </div>
+    </dialog>
     <dialog class="combat-action-dialog" aria-labelledby="combat-action-title">
       <h2 id="combat-action-title"></h2>
       <p class="combat-action-status"></p>
@@ -259,6 +258,11 @@
         <span>Combate automático</span>
       </label>
       <p>El grupo elegirá su equipo, ataques y curaciones durante los encuentros.</p>
+      <label class="options-toggle" for="music-toggle">
+        <input id="music-toggle" type="checkbox" role="switch" aria-checked="true">
+        <span>Música</span>
+      </label>
+      <p>La música suena en el menú y se detiene al entrar en la mazmorra.</p>
       <button class="options-close options-resource-open" type="button">Cargar recurso</button>
       <button class="options-close options-poi-open" type="button">Cargar POI</button>
       <button class="options-close options-map-open" type="button">Cargar mapa</button>
@@ -310,6 +314,7 @@
     <script src="personaje/progresion.js" defer></script>
     <script src="../juego.js" defer></script>
     <script src="sonidos.js" defer></script>
+    <script src="musica.js" defer></script>
     <script src="inventario/inventario.js" defer></script>
     <script src="personaje/equipo.js" defer></script>
     <script src="personaje/modalPersonaje.js" defer></script>

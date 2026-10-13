@@ -20,6 +20,7 @@
   const optionsPOIOpen = optionsDialog?.querySelector(".options-poi-open");
   const optionsMapOpen = optionsDialog?.querySelector(".options-map-open");
   const automaticCombatToggle = optionsDialog?.querySelector("#automatic-combat-toggle");
+  const musicToggle = optionsDialog?.querySelector("#music-toggle");
 
   if (!juego
     || !Array.isArray(juego.personajes)
@@ -65,6 +66,49 @@
     }
   });
 
+  // --- Música ---
+  // Canción fija del menú y preferencia de encendido/apagado persistida.
+  const MENU_MUSIC_SRC = "recursos/sonidos/menu.mp3";
+  const musicStorageKey = "juego.musica";
+  let musicaActiva = true;
+  try {
+    musicaActiva = window.localStorage.getItem(musicStorageKey) !== "false";
+  } catch {
+    musicaActiva = true;
+  }
+
+  function audioMapaActivo() {
+    const mapas = juego.mapasBase ?? [];
+    const mapa = mapas.find((entry) => entry.id === juego.mapaActivoId) ?? mapas[0];
+    return mapa?.audio ?? null;
+  }
+
+  // Reproduce la pista adecuada según el contexto. Al explorar suena la música
+  // del mapa (independiente del switch); fuera del mapa suena la canción fija
+  // del menú solo si la música está activa. El gestor evita reiniciar la misma.
+  function aplicarMusicaContexto(enElMapa) {
+    if (!juego.musica) return;
+    juego.musica.reproducir(enElMapa ? audioMapaActivo() : (musicaActiva ? MENU_MUSIC_SRC : null));
+  }
+
+  if (musicToggle instanceof HTMLInputElement) {
+    musicToggle.checked = musicaActiva;
+    musicToggle.setAttribute("aria-checked", String(musicaActiva));
+    musicToggle.addEventListener("change", () => {
+      musicaActiva = musicToggle.checked;
+      musicToggle.setAttribute("aria-checked", String(musicaActiva));
+      try {
+        window.localStorage.setItem(musicStorageKey, String(musicaActiva));
+      } catch {
+        // La preferencia sigue activa durante esta sesión si el navegador bloquea el almacenamiento.
+      }
+      if (gameView.hidden) aplicarMusicaContexto(false);
+    });
+  }
+  // Arranca la música del menú al cargar (el gestor reintenta si el navegador
+  // bloquea el autoplay hasta la primera interacción del usuario).
+  aplicarMusicaContexto(false);
+
   function mostrarPantalla(pantalla) {
     mainMenu.hidden = pantalla !== "menu";
     charactersScreen.hidden = pantalla !== "characters";
@@ -73,6 +117,7 @@
       gameMenuPanel.hidden = true;
       gameMenuToggle.setAttribute("aria-expanded", "false");
     }
+    aplicarMusicaContexto(pantalla === "game");
   }
 
   function renderizarElegidos() {
