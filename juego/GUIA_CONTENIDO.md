@@ -307,3 +307,62 @@ La lógica de equipamiento y validación está en `personaje/equipo.js`, en `equ
 - [ ] Los valores numéricos cumplen los límites indicados.
 - [ ] Si es equipo inicial, elegiste una sola forma: en inventario o equipado directamente.
 - [ ] El inventario inicial tiene espacio disponible.
+
+## 15. Sonidos y música
+
+El juego distingue entre **efectos puntuales** (se reproducen una vez) y la **música de fondo** (suena en loop).
+
+### 15.1 Sonido al moverse por el mapa
+
+Cada vez que el grupo avanza una casilla se reproduce `recursos/sonidos/pasos.mp3`. Es un efecto fijo definido en `sonidos.js` (clave `pasos`). Para cambiarlo, reemplaza ese archivo por otro con el mismo nombre.
+
+### 15.2 Sonido de un POI
+
+Un punto de interés puede tener una propiedad `sonido` con la ruta relativa del audio que suena al abrir su aviso. Es opcional: si se omite, no se reproduce nada.
+
+```js
+{
+  id: "tesoro-antiguo",
+  nivel: 1,
+  imagen: "recursos/imagen/poi/tesoro-antiguo.png",
+  sonido: "recursos/sonidos/abrir-cofre.mp3", // Opcional.
+  texto: "Un cofre olvidado entre el polvo.",
+  loot: "aleatorio",
+  accion: "Recoger tesoro",
+}
+```
+
+Desde **Opciones > Cargar POI** puedes asignar el audio con el botón “Asignar audio…”, igual que la imagen. El archivo se copia a `recursos/sonidos/` con el `id` del POI.
+
+### 15.3 Música de un mapa
+
+Un mapa puede tener una propiedad `audio` con la ruta de la canción que suena en loop mientras lo exploras. Acepta `null` si no quieres música.
+
+```js
+{
+  id: "mazmorra-inicial",
+  nivel: 1,
+  // ...
+  audio: "recursos/sonidos/tema-mazmorra.mp3", // O null para no reproducir música.
+  mensajes: { /* ... */ },
+}
+```
+
+Desde **Opciones > Cargar mapa** puedes asignarla con el botón “Asignar audio…”. El campo es opcional y por defecto queda en `null`.
+
+### 15.4 Música del menú
+
+El menú usa una única canción fija en `recursos/sonidos/menu.mp3`. En **Opciones** hay un interruptor de **Música** para encenderla o apagarla; la preferencia se guarda en el navegador (`localStorage`, clave `juego.musica`).
+
+- Suena al abrir la aplicación y en la pantalla de personajes.
+- Al entrar a explorar el mapa se detiene y pasa a sonar la música del mapa (o silencio si el mapa no tiene `audio`).
+- Si el interruptor está apagado, no suena ninguna canción fuera de la mazmorra. La música del mapa, en cambio, depende solo de la propiedad `audio` del mapa.
+
+> Nota: el interruptor de música funciona en cualquier navegador porque solo lee el archivo `menu.mp3` ya presente en `recursos/sonidos/`. En cambio, copiar audios nuevos al proyecto desde el editor (POI y mapa) usa la File System Access API, por lo que requiere un navegador compatible (Chrome o Edge) y elegir la carpeta del proyecto, igual que al guardar imágenes. Los efectos puntuales (`pasos`, `sonido` del POI) también funcionan en cualquier navegador porque solo leen archivos ya presentes en `recursos/sonidos/`.
+
+
+problemas a solucionar -------
+simule un ataque contra dos merodeadores el primero huyo y el segundo no podía atacar ya que decis que su arma no tenia alcance, cuando en realidad el primero ya no debia contar para el calculo de distancia.
+
+-- al terminar un mapa, salir por la puerta debe aparecer un modal, indicando que vamos al segundo nivel
+-- mejorar el loot de los personajes, para que dropeen menos cosas
