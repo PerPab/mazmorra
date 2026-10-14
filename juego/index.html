@@ -15,8 +15,10 @@
         <!--<p class="main-menu-subtitle">El destino del grupo está en tus manos.</p>-->
         <nav class="main-menu-options" aria-label="Menú principal">
           <button class="main-menu-button" type="button" data-menu-action="continue" disabled>Continuar aventura</button>
-          <button class="main-menu-button" type="button" data-menu-action="new">Partida nueva</button>
+          <button class="main-menu-button" type="button" data-menu-action="new">Nueva partida</button>
+          <button class="main-menu-button" type="button" data-menu-action="skirmish">Escaramuza</button>
           <button class="main-menu-button" type="button" data-menu-action="bestiary">Bestiario</button>
+          <button class="main-menu-button" type="button" data-menu-action="tutorial">Tutorial</button>
           <button class="main-menu-button main-menu-button-secondary" type="button" data-menu-action="options">Opciones</button>
         </nav>
         <p class="main-menu-status" aria-live="polite"></p>
@@ -49,6 +51,54 @@
       <img class="adventure-intro-image" alt="" hidden>
       <p class="adventure-intro-description"></p>
       <button class="adventure-enter" type="button">Entrar en la mazmorra</button>
+    </dialog>
+
+    <dialog class="story-mode-dialog" aria-labelledby="story-mode-title">
+      <h2 id="story-mode-title">Modo historia</h2>
+      <p>La aventura con mapas hechos a mano todavía está en preparación.</p>
+      <button class="story-mode-close" type="button">Volver al menú</button>
+    </dialog>
+
+    <dialog class="tutorial-dialog" aria-labelledby="tutorial-title">
+      <header class="tutorial-header">
+        <div>
+          <p class="main-menu-eyebrow">Manual del aventurero</p>
+          <h2 id="tutorial-title">Tutorial</h2>
+        </div>
+        <button class="tutorial-close-icon" type="button" aria-label="Cerrar tutorial">&times;</button>
+      </header>
+      <article class="tutorial-content">
+        <section>
+          <h3>Movimiento</h3>
+          <p>Usa las flechas del panel o las teclas de dirección para mover al grupo por los pasillos. Cada casilla recorrida consume una ración. Si no queda comida, cada aliado vivo pierde 10 puntos de poder por paso.</p>
+          <p>El mapa se descubre mientras avanzas. Al encontrar un punto de interés, el grupo se detiene y muestra un aviso antes de permitirte continuar.</p>
+        </section>
+        <section>
+          <h3>Combate</h3>
+          <p>Al encontrar enemigos puedes comenzar el combate o huir cuando esa opción esté disponible. El orden de la formación determina quién está al frente. Las armas tienen alcances distintos: si un aliado no alcanza a ningún enemigo, tendrá que pasar el turno o usar otra acción disponible.</p>
+          <p>Los ataques pueden fallar. Las habilidades especiales consumen poder; algunos ataques también pueden curar, dañar atributos o aplicar efectos como veneno, quemadura y parálisis.</p>
+        </section>
+        <section>
+          <h3>Formación</h3>
+          <p>Usa las flechas a los lados del nombre para cambiar el orden del grupo fuera del combate. La posición afecta las bonificaciones grupales y quién queda expuesto en primera línea. Los aliados caídos quedan fuera de combate y no actúan.</p>
+        </section>
+        <section>
+          <h3>Botín y equipo</h3>
+          <p>Al derrotar enemigos, el grupo recibe una ración por cada enemigo derrotado. El equipo que aparezca como botín se puede enviar al inventario desde el panel de encuentro. Los cofres pueden contener objetos, monedas y raciones.</p>
+          <p>Desde el inventario puedes equipar armas, armaduras y objetos especiales. Las armas y armaduras usadas en combate pierden eficacia con el tiempo; compara su estado antes de cambiar el equipo.</p>
+        </section>
+        <section>
+          <h3>Exploración automática</h3>
+          <p>Actívala en Opciones para que el grupo busque el punto de interés pendiente más cercano por un camino transitable. La marcha se detiene al encontrar un POI para que decidas qué hacer. El combate automático se configura por separado.</p>
+        </section>
+        <section>
+          <h3>Escaramuza e historia</h3>
+          <p>Escaramuza genera mapas y encuentros al azar. Al avanzar por la salida, el mapa aumenta de tamaño y aparecen más encuentros. Nueva partida abrirá el modo historia, que usará mapas hechos a mano y puntos de interés ubicados manualmente; ese modo todavía está en preparación.</p>
+        </section>
+      </article>
+      <footer class="tutorial-footer">
+        <button class="tutorial-close" type="button">Volver al menú</button>
+      </footer>
     </dialog>
 
     <dialog class="adventure-intro-dialog level-transition-dialog" aria-label="Nivel 2">
@@ -286,6 +336,11 @@
         <span>Combate automático</span>
       </label>
       <p>El grupo elegirá su equipo, ataques y curaciones durante los encuentros.</p>
+      <label class="options-toggle" for="automatic-exploration-toggle">
+        <input id="automatic-exploration-toggle" type="checkbox" role="switch" aria-checked="false">
+        <span>Exploración automática</span>
+      </label>
+      <p>El grupo avanza hacia el punto de interés pendiente más cercano y se detiene al encontrarlo.</p>
       <label class="options-toggle" for="music-toggle">
         <input id="music-toggle" type="checkbox" role="switch" aria-checked="true">
         <span>Música</span>

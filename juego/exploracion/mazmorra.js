@@ -28,6 +28,8 @@
   const COLUMNAS_VISIBLES = 7;
   const RADIO_DESCUBRIMIENTO = 2;
   let mapaActivo = null;
+  let tamanoMapaActual = 15;
+  let cantidadEncuentrosActual = 3;
   let layout = [];
   let nivelMapa = 1;
   let configuracionNivel = {};
@@ -46,6 +48,9 @@
   let poiActivo = null;
   let transicionNivelPendiente = false;
   let cansancioEnZonaPeligro = false;
+  let exploracionAutomaticaActiva = false;
+  let temporizadorExploracion = null;
+  const PASO_AUTOMATICO_MS = 850;
 
   function keyOf(row, column) {
     return `${row},${column}`;
@@ -87,6 +92,17 @@
     layout = crearLayout(mapaActivo.tamano ?? mapaActivo.tamaño ?? 15);
     entrance = { row: 1, column: 1 };
     exit = { row: layout.length - 2, column: layout.length - 2 };
+    if (juego.modoPartida === "escaramuza") {
+      const ronda = Math.max(1, Math.floor(Number(juego.rondaEscaramuza) || 1));
+      const encuentrosExtra = Math.max(0, Math.floor(Number(juego.encuentrosExtraEscaramuza) || 0));
+      tamanoMapaActual = Math.min(61, layout.length + ((ronda - 1) * 2));
+      layout = crearLayout(tamanoMapaActual);
+      cantidadEncuentrosActual = 2 + encuentrosExtra;
+      exit = { row: layout.length - 2, column: layout.length - 2 };
+    } else {
+      tamanoMapaActual = layout.length;
+      cantidadEncuentrosActual = mapaActivo.cantidadEnemigos ?? configuracionNivel.gruposEnemigos ?? 3;
+    }
   }
 
   function registrarAcontecimiento(mensaje) {
@@ -247,7 +263,7 @@
     const enemigosDisponibles = pool.length > 0 ? pool : poolCompleto;
     if (enemigosDisponibles.length > 0) {
       const cantidadGrupos = Math.min(
-        mapaActivo.cantidadEnemigos ?? configuracionNivel.gruposEnemigos ?? 3,
+        cantidadEncuentrosActual,
         ubicaciones.length,
       );
       for (let index = 0; index < cantidadGrupos; index += 1) {
@@ -558,6 +574,64 @@
       mostrarEscenaExploracion(poi.imagen, poi.alt ?? "Puerta de salida");
     }
     if ((!poi || poi.resuelto) && comprobarEmboscadaPorCansancio()) return;
+    programarExploracionAutomatica();
+  }
+
+  function encontrarSiguientePasoAutomatico() {
+    const objetivos = new Set([...pointsOfInterest.entries()]
+      .filter(([key, poi]) => !poi.resuelto && key !== keyOf(position.row, position.column))
+      .map(([key]) => key));
+    if (objetivos.size === 0) return null;
+
+    const visitados = new Set([keyOf(position.row, position.column)]);
+    const cola = [{ ...position, primerPaso: null }];
+    for (let indice = 0; indice < cola.length; indice += 1) {
+      const actual = cola[indice];
+      for (const [direccion, [dr, dc]] of Object.entries(directions)) {
+        const row = actual.row + dr;
+        const column = actual.column + dc;
+        const key = keyOf(row, column);
+        if (visitados.has(key) || !esTransitable(row, column)) continue;
+        const primerPaso = actual.primerPaso ?? direccion;
+        if (objetivos.has(key)) return primerPaso;
+        visitados.add(key);
+        cola.push({ row, column, primerPaso });
+      }
+    }
+    return null;
+  }
+
+  function programarExploracionAutomatica() {
+    if (!exploracionAutomaticaActiva || temporizadorExploracion !== null
+      || gameView.hidden || poiActivo || juego.combate?.puedeExplorar === false
+      || document.querySelector("dialog[open]")) return;
+    temporizadorExploracion = window.setTimeout(() => {
+      temporizadorExploracion = null;
+      if (!exploracionAutomaticaActiva || gameView.hidden || poiActivo
+        || juego.combate?.puedeExplorar === false || document.querySelector("dialog[open]")) return;
+      if (!juego.personajes.some((personaje) => personaje.vida.actual > 0)) {
+        exploracionAutomaticaActiva = false;
+        registrarAcontecimiento("La exploración automática se detiene: no quedan aliados en pie.");
+        return;
+      }
+      const siguientePaso = encontrarSiguientePasoAutomatico();
+      if (!siguientePaso) {
+        exploracionAutomaticaActiva = false;
+        registrarAcontecimiento("La exploración automática se detiene: no quedan puntos de interés alcanzables.");
+        return;
+      }
+      mover(siguientePaso);
+      programarExploracionAutomatica();
+    }, PASO_AUTOMATICO_MS);
+  }
+
+  function establecerExploracionAutomatica(activa) {
+    exploracionAutomaticaActiva = Boolean(activa);
+    if (temporizadorExploracion !== null) {
+      window.clearTimeout(temporizadorExploracion);
+      temporizadorExploracion = null;
+    }
+    if (exploracionAutomaticaActiva) programarExploracionAutomatica();
   }
 
   poiAction.addEventListener("click", () => {
@@ -649,10 +723,21 @@
     if (["enemigo", "emboscada"].includes(poiActivo?.tipo)) event.preventDefault();
   });
   poiDialog.addEventListener("close", () => {
+    const poiQueSeCerro = poiActivo;
+    if (poiQueSeCerro?.tipo === "vendedor") {
+      // Visitar o marcharse resuelve el POI; evita que la exploración
+      // automática vuelva a seleccionar al vendedor en la misma casilla.
+      poiQueSeCerro.resuelto = true;
+      encounterRoom = null;
+      dibujarMapa();
+    }
     if (poiActivo?.tipo === "salida") {
       mostrarEscenaExploracion(poiActivo.imagen, poiActivo.alt ?? "Puerta de salida");
     }
     limpiarPOI();
+    if (poiQueSeCerro?.tipo !== "salida" || poiQueSeCerro.resuelto) {
+      programarExploracionAutomatica();
+    }
   });
 
   levelTransitionDialog.addEventListener("close", () => {
@@ -714,9 +799,11 @@
         explorationScene.hidden = true;
       }
       dibujarMapa();
+      programarExploracionAutomatica();
     }
     if (tipo === "botin-recogido") {
       explorationScene.hidden = !explorationSceneImage.getAttribute("src");
+      programarExploracionAutomatica();
     }
     actualizarControles();
   });
@@ -740,6 +827,12 @@
       cerrarPOI();
       generarEncuentros();
       dibujarMapa();
+      if (juego.modoPartida === "escaramuza") {
+        registrarAcontecimiento(
+          `Escaramuza · ronda ${juego.rondaEscaramuza}: mapa ${layout.length} × ${layout.length}, ${cantidadEncuentrosActual} encuentros enemigos.`,
+        );
+      }
+      programarExploracionAutomatica();
     },
     iniciarSiguienteNivel() {
       const aliadosVivos = juego.personajes.filter((personaje) => personaje.vida.actual > 0);
@@ -754,6 +847,13 @@
       }
 
       const siguienteNivel = nivelMapa + 1;
+      if (juego.modoPartida === "escaramuza") {
+        juego.rondaEscaramuza = Math.max(1, Math.floor(Number(juego.rondaEscaramuza) || 1)) + 1;
+        juego.encuentrosExtraEscaramuza = Math.max(
+          0,
+          Math.floor(Number(juego.encuentrosExtraEscaramuza) || 0),
+        ) + Math.floor(Math.random() * 2) + 1;
+      }
       const siguienteMapa = (juego.mapasBase ?? []).find((mapa) => Number(mapa.nivel) === siguienteNivel);
       if (siguienteMapa) juego.mapaActivoId = siguienteMapa.id;
       juego.nivelMazmorraActual = siguienteNivel;
@@ -762,6 +862,7 @@
     obtenerPosicion() {
       return { ...position };
     },
+    setExploracionAutomatica: establecerExploracionAutomatica,
   };
 
   juego.mazmorra.iniciar();

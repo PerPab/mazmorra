@@ -13,6 +13,10 @@
   const storyClose = storyDialog?.querySelector(".character-story-close");
   const adventureIntroDialog = document.querySelector(".adventure-intro-dialog");
   const adventureEnter = adventureIntroDialog?.querySelector(".adventure-enter");
+  const storyModeDialog = document.querySelector(".story-mode-dialog");
+  const storyModeClose = storyModeDialog?.querySelector(".story-mode-close");
+  const tutorialDialog = document.querySelector(".tutorial-dialog");
+  const tutorialCloseButtons = tutorialDialog?.querySelectorAll(".tutorial-close, .tutorial-close-icon");
   const gameMenuToggle = gameView?.querySelector(".game-menu-toggle");
   const gameMenuPanel = gameView?.querySelector("#game-menu-panel");
   const gameMenuReturn = gameView?.querySelector(".game-menu-return");
@@ -21,6 +25,7 @@
   const optionsPOIOpen = optionsDialog?.querySelector(".options-poi-open");
   const optionsMapOpen = optionsDialog?.querySelector(".options-map-open");
   const automaticCombatToggle = optionsDialog?.querySelector("#automatic-combat-toggle");
+  const automaticExplorationToggle = optionsDialog?.querySelector("#automatic-exploration-toggle");
   const musicToggle = optionsDialog?.querySelector("#music-toggle");
 
   if (!juego
@@ -38,6 +43,10 @@
     || !(storyClose instanceof HTMLButtonElement)
     || !(adventureIntroDialog instanceof HTMLDialogElement)
     || !(adventureEnter instanceof HTMLButtonElement)
+    || !(storyModeDialog instanceof HTMLDialogElement)
+    || !(storyModeClose instanceof HTMLButtonElement)
+    || !(tutorialDialog instanceof HTMLDialogElement)
+    || tutorialCloseButtons.length !== 2
     || !(gameMenuToggle instanceof HTMLButtonElement)
     || !(gameMenuPanel instanceof HTMLElement)
     || !(gameMenuReturn instanceof HTMLButtonElement)
@@ -45,7 +54,8 @@
     || !(optionsClose instanceof HTMLButtonElement)
     || !(optionsPOIOpen instanceof HTMLButtonElement)
     || !(optionsMapOpen instanceof HTMLButtonElement)
-    || !(automaticCombatToggle instanceof HTMLInputElement)) {
+    || !(automaticCombatToggle instanceof HTMLInputElement)
+    || !(automaticExplorationToggle instanceof HTMLInputElement)) {
     throw new Error("No se pudieron inicializar las pantallas de menú del juego.");
   }
 
@@ -66,6 +76,25 @@
     } catch {
       // La opción sigue activa durante esta sesión si el navegador bloquea el almacenamiento.
     }
+  });
+
+  const explorationStorageKey = "juego.exploracionAutomatica";
+  try {
+    juego.exploracionAutomatica = window.localStorage.getItem(explorationStorageKey) === "true";
+  } catch {
+    juego.exploracionAutomatica = false;
+  }
+  automaticExplorationToggle.checked = juego.exploracionAutomatica;
+  automaticExplorationToggle.setAttribute("aria-checked", String(juego.exploracionAutomatica));
+  automaticExplorationToggle.addEventListener("change", () => {
+    juego.exploracionAutomatica = automaticExplorationToggle.checked;
+    automaticExplorationToggle.setAttribute("aria-checked", String(juego.exploracionAutomatica));
+    try {
+      window.localStorage.setItem(explorationStorageKey, String(juego.exploracionAutomatica));
+    } catch {
+      // La opción se mantiene activa durante esta sesión.
+    }
+    juego.mazmorra?.setExploracionAutomatica?.(juego.exploracionAutomatica);
   });
 
   // --- Música ---
@@ -190,9 +219,17 @@
       case "continue":
         if (adventureStarted) {
           mostrarPantalla("game");
+          juego.mazmorra?.setExploracionAutomatica?.(juego.exploracionAutomatica);
         }
         break;
       case "new":
+        mainMenuStatus.textContent = "";
+        storyModeDialog.showModal();
+        break;
+      case "skirmish":
+        juego.modoPartida = "escaramuza";
+        juego.rondaEscaramuza = 1;
+        juego.encuentrosExtraEscaramuza = 0;
         mainMenuStatus.textContent = "";
         adventureIntroDialog.showModal();
         break;
@@ -203,6 +240,9 @@
         renderizarBestiario();
         mainMenu.hidden = true;
         bestiaryScreen.hidden = false;
+        break;
+      case "tutorial":
+        tutorialDialog.showModal();
         break;
       default:
         throw new Error(`Opción de menú desconocida: "${button.dataset.menuAction}".`);
@@ -224,9 +264,20 @@
     window.inventarioGrupo?.iniciarPartida?.();
     juego.mazmorra?.iniciar();
     mostrarPantalla("game");
+    juego.mazmorra?.setExploracionAutomatica?.(juego.exploracionAutomatica);
   });
   adventureIntroDialog.addEventListener("click", (event) => {
     if (event.target === adventureIntroDialog) adventureIntroDialog.close();
+  });
+  storyModeClose.addEventListener("click", () => storyModeDialog.close());
+  storyModeDialog.addEventListener("click", (event) => {
+    if (event.target === storyModeDialog) storyModeDialog.close();
+  });
+  tutorialCloseButtons.forEach((button) => {
+    button.addEventListener("click", () => tutorialDialog.close());
+  });
+  tutorialDialog.addEventListener("click", (event) => {
+    if (event.target === tutorialDialog) tutorialDialog.close();
   });
 
   gameMenuToggle.addEventListener("click", () => {
@@ -246,6 +297,9 @@
   });
 
   optionsClose.addEventListener("click", () => optionsDialog.close());
+  optionsDialog.addEventListener("close", () => {
+    juego.mazmorra?.setExploracionAutomatica?.(juego.exploracionAutomatica);
+  });
   optionsPOIOpen.addEventListener("click", () => juego.editorRecursos?.abrir("poi"));
   optionsMapOpen.addEventListener("click", () => juego.editorRecursos?.abrir("mapa"));
   function crearFichaBestiario(entidad, esPersonaje) {

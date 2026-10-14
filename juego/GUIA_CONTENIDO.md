@@ -383,7 +383,7 @@ Al agregar otro nivel, incluye su script en `index.html` después de `datos/mapa
 
 ### 15.4 Vendedor y monedas
 
-Las monedas y las raciones son reservas compartidas, separadas de los espacios del inventario. Los cofres dan entre 10 y 25 monedas y entre 2 y 5 raciones además de sus objetos. Cada casilla transitable recorrida consume una ración; sin comida, cada aliado vivo pierde 10 puntos de poder por paso, hasta cero. Al empezar una partida el grupo recibe 10 raciones. El enano vende paquetes de 5 raciones por 20 monedas, con tres paquetes disponibles por vendedor. Los objetos tienen un `valor` en monedas; venderlos al enano paga la mitad de ese valor (redondeada hacia abajo). Los objetos de misión no se pueden vender.
+Las monedas y las raciones son reservas compartidas, separadas de los espacios del inventario. Los cofres dan entre 10 y 25 monedas y entre 2 y 5 raciones además de sus objetos. Cada casilla transitable recorrida consume una ración; sin comida, cada aliado vivo pierde 10 puntos de poder por paso, hasta cero. Al empezar una partida el grupo recibe 10 raciones. Cada enemigo derrotado deja una ración, también en encuentros de emboscada. El enano vende paquetes de 5 raciones por 20 monedas, con tres paquetes disponibles por vendedor. Los objetos tienen un `valor` en monedas: el enano paga al grupo un tercio redondeado hacia arriba, con mínimo de una moneda, y los vende por tres veces ese precio. Los objetos de misión no se pueden vender.
 
 El POI `vendedor-enano` aparece según el nivel mínimo y la cantidad de POI del mapa. Su mercancía se configura mediante IDs existentes en `itemsBase`, por ejemplo:
 
@@ -437,6 +437,10 @@ El menú usa una única canción fija en `recursos/sonidos/menu.mp3`. En **Opcio
 - Si el interruptor está apagado, no suena ninguna canción fuera de la mazmorra. La música del mapa, en cambio, depende solo de la propiedad `audio` del mapa.
 
 > Nota: el interruptor de música funciona en cualquier navegador porque solo lee el archivo `menu.mp3` ya presente en `recursos/sonidos/`. En cambio, copiar audios nuevos al proyecto desde el editor (POI y mapa) usa la File System Access API, por lo que requiere un navegador compatible (Chrome o Edge) y elegir la carpeta del proyecto, igual que al guardar imágenes. Los efectos puntuales (`pasos`, `sonido` del POI) también funcionan en cualquier navegador porque solo leen archivos ya presentes en `recursos/sonidos/`.
+
+### 15.7 Progresión de Escaramuza
+
+**Escaramuza** comienza en la ronda 1 con dos encuentros enemigos. Al cruzar la salida, cada ronda agrega dos casillas por lado al tamaño base del mapa y suma al azar uno o dos encuentros permanentes a la ronda anterior. El tamaño tiene un máximo de 61 casillas por lado. Esta progresión solo aplica al modo Escaramuza; el modo Historia podrá definir sus mapas y encuentros manualmente.
 
 ## 16. Organización de los archivos JavaScript
 

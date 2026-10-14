@@ -17,6 +17,14 @@
   const PRECIO_PAQUETE_RACIONES = 20;
   const RACIONES_POR_PAQUETE = 5;
 
+  function precioVentaDelGrupo(item) {
+    return Math.max(1, Math.ceil(item.valor / 3));
+  }
+
+  function precioCompraDelGrupo(item) {
+    return precioVentaDelGrupo(item) * 3;
+  }
+
   function crearInstancia(item) {
     return new juego.Item({
       ...item,
@@ -74,7 +82,7 @@
     ));
     stock.forEach((entry, index) => {
       const item = entry.item;
-      const precio = item.valor;
+      const precio = precioCompraDelGrupo(item);
       stockElement.append(crearEntrada(
         item,
         `${item.descripcion} · ${precio} monedas · Unidades: ${entry.cantidad}`,
@@ -95,7 +103,7 @@
     });
     window.inventarioGrupo.items.forEach((item, slotIndex) => {
       if (!item || item.esObjetoMision) return;
-      const precioVenta = Math.floor(item.valor / 2);
+      const precioVenta = precioVentaDelGrupo(item);
       inventoryElement.append(crearEntrada(
         item,
         `${item.descripcion} · Venta: ${precioVenta} monedas`,

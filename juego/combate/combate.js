@@ -1748,6 +1748,12 @@
       const enemigosDerrotados = enemigos.filter((enemigo) => !estaVivoCombatiente(enemigo));
       enemigosDerrotados.forEach((enemigo) => registrarSuceso(`${enemigo.nombre} ha sido derrotado.`));
       enemigosDerrotados.forEach((enemigo) => otorgarExperiencia(participantes, enemigo, danioPorPersonaje));
+      if (enemigosDerrotados.length > 0) {
+        window.inventarioGrupo?.agregarRaciones(enemigosDerrotados.length);
+        registrarSuceso(
+          `Recoges ${enemigosDerrotados.length} ${enemigosDerrotados.length === 1 ? "ración" : "raciones"} de los enemigos derrotados.`,
+        );
+      }
       if (enemigosDerrotados.length === 0) {
         registrarSuceso("Los enemigos huyeron. El grupo no obtiene experiencia por este combate.");
       }
