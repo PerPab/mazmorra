@@ -1,4 +1,4 @@
-# Mecánicas de pasivas y bonificaciones grupales
+﻿# Mecánicas de pasivas y bonificaciones grupales
 
 Este documento registra el funcionamiento acordado para las habilidades de los cuatro personajes jugables. Los valores se consideran iniciales y pueden ajustarse después de probar el equilibrio.
 
@@ -7,6 +7,14 @@ Este documento registra el funcionamiento acordado para las habilidades de los c
 La formación se lee desde la posición 1 (punta) hasta la posición 4 (retaguardia). Las bonificaciones grupales que aumentan vida o cordura máxima solo benefician a personajes ubicados detrás de quien concede la bonificación. El personaje que la concede no se beneficia a sí mismo, y quienes están delante tampoco. Los valores se asignan por distancia detrás del personaje: primer lugar detrás, +15; segundo, +10; tercero, +5; los lugares posteriores, +0. Los personajes fuera de la formación no reciben estos aumentos.
 
 Al cambiar la formación se recalculan los máximos. La variación del máximo se suma o resta al recurso actual para conservar la misma proporción de recurso disponible, limitado entre cero y el nuevo máximo.
+
+## Moral por victoria en combate
+
+Cuando un enemigo muere, cada aliado vivo que siga participando en el combate recupera 5 puntos de cordura, sin superar su máximo actual. Los aliados caídos o que huyeron no reciben esta recuperación. Si el grupo derrota a varios enemigos, la recuperación se aplica por cada enemigo derrotado.
+
+## Recuperación al cambiar de nivel
+
+Al cerrar el modal de transición, los aliados vivos recuperan toda su vida, cordura y poder. Los aliados caídos permanecen fuera de combate y deben ser revividos con la poción especial.
 
 ## Caballero maldito
 
@@ -38,6 +46,16 @@ Sus efectos de curación restauran un 10 % adicional de vida. Se aplica a hechiz
 
 Aumenta la cordura máxima de los aliados que estén detrás de él: +15 al primero, +10 al segundo y +5 al tercero. No aumenta la cordura máxima del propio Sacerdote ni la de quienes estén delante de él. La bonificación cambia al cambiar la formación.
 
+Además, si ocupa la retaguardia entre los aliados vivos, reduce en 8 puntos porcentuales la posibilidad de que el grupo sufra una emboscada por cansancio durante la exploración. Esta protección no modifica su probabilidad de crítico.
+
+## Emboscadas por cansancio durante la exploración
+
+Después de cada movimiento a una casilla sin un punto de interés pendiente, se calcula el poder promedio actual de los aliados vivos. Con más del 80 % no hay riesgo por cansancio. Al llegar al 80 % o menos, el registro de novedades avisa que aumenta el riesgo y cada movimiento puede provocar un encuentro aleatorio adicional, independiente de los encuentros distribuidos en el mapa.
+
+La probabilidad comienza en 5 % al 80 % de poder y aumenta linealmente hasta 35 % con 0 % de poder. Si el Sacerdote está en la última posición de la formación viva, su protección resta 8 puntos porcentuales a esa probabilidad, hasta un mínimo de 0 %. Durante una emboscada, los enemigos atacan primero.
+
+Antes de iniciar una emboscada aleatoria, se muestra un modal con el título «¡Emboscada!» y la imagen `recursos/imagen/especiales/emboscada.webp`. El combate comienza cuando el jugador elige «Enfrentar emboscada».
+
 ## Asesino
 
 ### Pasiva
@@ -55,6 +73,7 @@ Si el grupo gana la tirada de iniciativa con el Asesino al frente, aparece tambi
 - Definiciones y descripciones de personajes: `personaje/personajesBase.js`.
 - Recálculo de vida y cordura máximas por formación: `personaje/personajes.js`.
 - Costos especiales, curaciones, iniciativa, emboscada y huida: `combate/combate.js`.
+- Riesgo de emboscada por cansancio y protección del Sacerdote: `exploracion/mazmorra.js` y `personaje/personaje.js`.
 - Fórmulas de probabilidad de crítico y esquiva: `combate/probabilidades.js`.
 - Curación por consumibles y equipo: `personaje/equipo.js`.
 
@@ -85,7 +104,7 @@ El usuario está desarrollando un juego de mazmorras en HTML, CSS y JavaScript v
 
 4. El usuario pidió un menú inicial con **Continuar aventura**, **Partida nueva**, **Elegidos** y **Salir**, más un menú hamburguesa dentro del juego con **Salir al menú principal**; la narración de partida nueva mediante imágenes queda para una etapa futura.
    - Se empezó a implementar la estructura en HTML, estilos de menú y una pantalla de presentación de personajes generada desde los datos del grupo.
-   - Se añadió [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/menu.js>) para cambiar entre pantallas, mostrar los personajes y controlar el menú hamburguesa.
+   - Se añadió [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/app/menu.js>) para cambiar entre pantallas, mostrar los personajes y controlar el menú hamburguesa.
    - La primera carga en navegador ya muestra la pantalla inicial con **Continuar aventura** deshabilitado, **Partida nueva**, **Elegidos** y **Salir**.
    - Esta última tarea no está terminada: falta probar la navegación completa y corregir cualquier detalle descubierto.
 
@@ -94,7 +113,7 @@ El usuario está desarrollando un juego de mazmorras en HTML, CSS y JavaScript v
 Archivos actualizados:
 - [index.html](<C:/Users/pablo/Desktop/workspace js/juego/index.html>): menús principal y de Elegidos, cabecera del juego, menú hamburguesa y aviso al intentar salir del navegador. El juego quedó envuelto en `#game-view`, oculto inicialmente.
 - [styles.css](<C:/Users/pablo/Desktop/workspace js/juego/styles.css>): estilos de menús, galería, barra superior y diálogo de salida; anteriormente también recibió los ajustes del modal de inventario e imágenes.
-- [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/menu.js>): nuevo controlador de navegación y renderizado de galería.
+- [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/app/menu.js>): nuevo controlador de navegación y renderizado de galería.
 - [item/item.js](<C:/Users/pablo/Desktop/workspace js/juego/item/item.js>): reemplazo de metadatos antiguos por `magico`, validación booleana y regla para grimorios.
 - [item/armadurasBase.js](<C:/Users/pablo/Desktop/workspace js/juego/item/armadurasBase.js>), [item/armasBase.js](<C:/Users/pablo/Desktop/workspace js/juego/item/armasBase.js>), [item/objetosEspecialesBase.js](<C:/Users/pablo/Desktop/workspace js/juego/item/objetosEspecialesBase.js>), [item/consumiblesBase.js](<C:/Users/pablo/Desktop/workspace js/juego/item/consumiblesBase.js>): `magico: false`, sin `maldito`/`sagrado`.
 - [personaje/equipo.js](<C:/Users/pablo/Desktop/workspace js/juego/personaje/equipo.js>): reglas de clase mágica, selección de aliados y uso de consumibles.
@@ -119,10 +138,10 @@ Verificación:
 <important_files>
 - [juego/index.html](<C:/Users/pablo/Desktop/workspace js/juego/index.html>)
   - Estructura de pantallas, diálogo de salida y orden de scripts.
-  - Revisar sobre todo el wrapper `#game-view`, la cabecera y la ubicación del `<script src="menu.js" defer>`.
+  - Revisar sobre todo el wrapper `#game-view`, la cabecera y la ubicación del `<script src="app/menu.js" defer>`.
   - La indentación del contenido del juego puede ser mejorable, aunque no afecta la semántica.
 
-- [juego/menu.js](<C:/Users/pablo/Desktop/workspace js/juego/menu.js>)
+- [juego/app/menu.js](<C:/Users/pablo/Desktop/workspace js/juego/app/menu.js>)
   - Controla las cuatro opciones principales, galería, hamburguesa y regreso al menú.
   - La implementación maneja el bloqueo de retorno al menú si `.encounter-start` está deshabilitado durante combate.
 
@@ -145,7 +164,7 @@ Verificación:
    - «Partida nueva» abre el juego y habilita «Continuar aventura».
    - El hamburguesa abre/cierra el panel y «Salir al menú principal» conserva el estado en memoria.
    - «Salir» abre su aviso y se puede cerrar.
-2. Si el menú deja el juego visible/oculto incorrectamente, revisar `mostrarPantalla()` en [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/menu.js>) y reglas `[hidden]` en [styles.css](<C:/Users/pablo/Desktop/workspace js/juego/styles.css>).
+2. Si el menú deja el juego visible/oculto incorrectamente, revisar `mostrarPantalla()` en [menu.js](<C:/Users/pablo/Desktop/workspace js/juego/app/menu.js>) y reglas `[hidden]` en [styles.css](<C:/Users/pablo/Desktop/workspace js/juego/styles.css>).
 3. Considerar ajustar navegación durante combate; actualmente el retorno a menú se bloquea usando el estado `disabled` del botón de encuentro.
 4. Más adelante, implementar guardado persistente y la introducción de partida nueva como secuencia de imágenes y texto, tal como mencionó el usuario.
 5. El usuario especificó la idea de guardado: guardar automáticamente cada vez que termine un combate, permitir continuar desde el menú incluso después de recargar y eliminar la partida si mueren todos los miembros del grupo. Se propuso `localStorage`; aún no implementarlo hasta que lo solicite.

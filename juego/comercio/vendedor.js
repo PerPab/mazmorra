@@ -1,0 +1,147 @@
+(function inicializarVendedor() {
+  const juego = window.juego;
+  const dialog = document.querySelector(".merchant-dialog");
+  const stockElement = dialog?.querySelector(".merchant-stock");
+  const inventoryElement = dialog?.querySelector(".merchant-inventory");
+  const balanceElement = dialog?.querySelector(".merchant-balance");
+  const messageElement = dialog?.querySelector(".merchant-message");
+  const closeButton = dialog?.querySelector(".merchant-close");
+  if (!juego || !(dialog instanceof HTMLDialogElement) || !(stockElement instanceof HTMLElement)
+    || !(inventoryElement instanceof HTMLElement) || !(balanceElement instanceof HTMLElement)
+    || !(messageElement instanceof HTMLElement) || !(closeButton instanceof HTMLButtonElement)) return;
+
+  let stock = [];
+  let stockPaquetesRaciones = 0;
+  let vendedorActivo = null;
+  let onClose = null;
+  const PRECIO_PAQUETE_RACIONES = 20;
+  const RACIONES_POR_PAQUETE = 5;
+
+  function crearInstancia(item) {
+    return new juego.Item({
+      ...item,
+      durabilidad: undefined,
+      ...(["arma", "armadura"].includes(item.categoria) ? { estado: "optimo" } : {}),
+      bonificaciones: item.bonificaciones ? { ...item.bonificaciones } : {},
+      bonificacion: item.bonificacion ? { ...item.bonificacion } : undefined,
+      ataquesEspeciales: item.ataquesEspeciales ? structuredClone(item.ataquesEspeciales) : undefined,
+      efectoEstado: item.efectoEstado ? { ...item.efectoEstado } : undefined,
+    });
+  }
+
+  function actualizarSaldo() {
+    balanceElement.textContent = `Monedas: ${window.inventarioGrupo.monedas} \u{1FA99} · Raciones: ${window.inventarioGrupo.raciones}`;
+  }
+
+  function crearEntrada(item, detalle, accion, disabled, click) {
+    const row = document.createElement("article");
+    row.className = "merchant-entry";
+    const description = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = item.nombre;
+    const info = document.createElement("p");
+    info.textContent = detalle;
+    description.append(name, info);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = accion;
+    button.disabled = disabled;
+    button.addEventListener("click", click);
+    row.append(description, button);
+    return row;
+  }
+
+  function renderizar() {
+    stockElement.replaceChildren();
+    inventoryElement.replaceChildren();
+    actualizarSaldo();
+    stockElement.append(crearEntrada(
+      { nombre: "Paquete de raciones" },
+      `${RACIONES_POR_PAQUETE} unidades de comida · ${PRECIO_PAQUETE_RACIONES} monedas · Paquetes: ${stockPaquetesRaciones}`,
+      "Comprar",
+      stockPaquetesRaciones <= 0 || window.inventarioGrupo.monedas < PRECIO_PAQUETE_RACIONES,
+      () => {
+        if (stockPaquetesRaciones <= 0 || window.inventarioGrupo.monedas < PRECIO_PAQUETE_RACIONES) return;
+        window.inventarioGrupo.gastarMonedas(PRECIO_PAQUETE_RACIONES);
+        window.inventarioGrupo.agregarRaciones(RACIONES_POR_PAQUETE);
+        stockPaquetesRaciones -= 1;
+        if (vendedorActivo) vendedorActivo.stockRaciones = stockPaquetesRaciones;
+        messageElement.textContent = `Compraste ${RACIONES_POR_PAQUETE} raciones por ${PRECIO_PAQUETE_RACIONES} monedas.`;
+        juego.sonidos?.reproducir("inventario");
+        juego.registrarNovedad?.(`El grupo compró ${RACIONES_POR_PAQUETE} raciones de comida por ${PRECIO_PAQUETE_RACIONES} monedas.`);
+        renderizar();
+      },
+    ));
+    stock.forEach((entry, index) => {
+      const item = entry.item;
+      const precio = item.valor;
+      stockElement.append(crearEntrada(
+        item,
+        `${item.descripcion} · ${precio} monedas · Unidades: ${entry.cantidad}`,
+        "Comprar",
+        entry.cantidad <= 0 || window.inventarioGrupo.monedas < precio || !window.inventarioGrupo.items.includes(null),
+        () => {
+          if (entry.cantidad <= 0 || window.inventarioGrupo.monedas < precio
+            || !window.inventarioGrupo.items.includes(null)) return;
+          window.inventarioGrupo.gastarMonedas(precio);
+          window.inventarioGrupo.agregarItem(crearInstancia(item));
+          entry.cantidad -= 1;
+          messageElement.textContent = `Compraste ${item.nombre}.`;
+          juego.sonidos?.reproducir("inventario");
+          juego.registrarNovedad?.(`El grupo compró ${item.nombre} por ${precio} monedas.`);
+          renderizar();
+        },
+      ));
+    });
+    window.inventarioGrupo.items.forEach((item, slotIndex) => {
+      if (!item || item.esObjetoMision) return;
+      const precioVenta = Math.floor(item.valor / 2);
+      inventoryElement.append(crearEntrada(
+        item,
+        `${item.descripcion} · Venta: ${precioVenta} monedas`,
+        "Vender",
+        false,
+        () => {
+          const actual = window.inventarioGrupo.items[slotIndex];
+          if (actual !== item) return;
+          window.inventarioGrupo.retirarItem(slotIndex + 1);
+          window.inventarioGrupo.agregarMonedas(precioVenta);
+          messageElement.textContent = `Vendiste ${item.nombre} por ${precioVenta} monedas.`;
+          juego.sonidos?.reproducir("inventario");
+          juego.registrarNovedad?.(`El grupo vendió ${item.nombre} por ${precioVenta} monedas.`);
+          renderizar();
+        },
+      ));
+    });
+    if (stockElement.childElementCount === 0) stockElement.textContent = "El vendedor se quedó sin mercancía.";
+    if (inventoryElement.childElementCount === 0) inventoryElement.textContent = "No hay objetos para vender.";
+  }
+
+  function abrir(poi, cerrarPoi) {
+    if (!Number.isInteger(poi.stockRaciones)) poi.stockRaciones = 3;
+    vendedorActivo = poi;
+    stockPaquetesRaciones = poi.stockRaciones;
+    if (!Array.isArray(poi.stockVendedor)) {
+      const ids = Array.isArray(poi.mercancia) ? poi.mercancia : [];
+      poi.stockVendedor = ids.map((id) => juego.itemsBase.find((item) => item.id === id))
+        .filter(Boolean)
+        .map((item) => ({ item, cantidad: 3 }));
+    }
+    stock = poi.stockVendedor;
+    onClose = cerrarPoi;
+    messageElement.textContent = "Revisa la mercancía o vende objetos de la mochila del grupo.";
+    renderizar();
+    if (!dialog.open) dialog.showModal();
+  }
+
+  closeButton.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => {
+    const callback = onClose;
+    onClose = null;
+    vendedorActivo = null;
+    callback?.();
+  });
+  window.addEventListener("juego:inventario-actualizado", renderizar);
+  juego.vendedor = { abrir };
+})();

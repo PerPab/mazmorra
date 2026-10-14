@@ -15,19 +15,19 @@
   window.juego.enemigosBase = [
     new Enemigo({
       id: "humano-armado",
-      nombre: "Merodeador armado",
+      nombre: "Bandido saqueador de tumbas",
       tipo: "humano",
-      imagen: "recursos/imagen/enemigos/bandit_2.png",
+      imagen: "recursos/imagen/enemigos/bandido_merodeador_1.png",
       nivel: 1,
       vidaMaxima: 50,
       corduraMaxima: 100,
       poderMaximo: 100,
-      ataqueBase: 5,
-      resistenciaBase: 2,
-      agilidad: 4,
+      ataqueBase: 4,
+      resistenciaBase: 5,
+      agilidad: 2,
       maldito: false,
       equipo: { arma: espadaLargaOxidada, armadura: armaduraMediaAntigua },
-      descripcion: "Un merodeador humano que lucha con una espada oxidada y una armadura pesada.",
+      descripcion: "Un saqueador de tumbas, su armadura aún lleva el hedor de su antiguo propietario.",
     }),
   ];
 
@@ -47,21 +47,53 @@
     "nombre":  "Bandido andrajoso",
     "descripcion":  "Un bandido vestido con harapos, en sus ojos brilla la locura.",
     "nivel":  1,
-    "vidaMaxima":  50,
+    "vidaMaxima":  40,
     "corduraMaxima":  100,
     "poderMaximo":  100,
-    "ataqueBase":  4,
+    "ataqueBase":  3,
     "resistenciaBase":  2,
-    "agilidad":  5,
+    "agilidad":  4,
     "danioCorduraPorGolpe":  1,
     "danioMoralPorGolpe":  1,
     "bonificacionCritico":  0,
     "maldito":  false,
-    "imagen":  "recursos/imagen/enemigos/bandit_1.png"
+    "imagen":  "recursos/imagen/enemigos/bandido_andrajoso_1.png"
 },
     tipo: "humano",
     equipo: {
       arma: items.find((item) => item.id === "espada-larga-oxidada") ?? null,
+      armadura: items.find((item) => item.id === "armadura-media-antigua") ?? null,
+    },
+  });
+  window.juego.enemigosBase.push(enemigo);
+  window.juego.poolEncuentros.push(enemigo);
+})();
+
+
+// Enemigo humano agregado desde Opciones > Cargar recurso.
+(function () {
+  const items = window.juego.itemsBase;
+  const enemigo = new window.juego.Enemigo({
+    ...{
+  "id": "bandido-arquero-andrajoso",
+  "nombre": "Bandido andrajoso arquero",
+  "descripcion": "Un ladrón ruin, que mata por la espalda.",
+  "nivel": 1,
+  "vidaMaxima": 30,
+  "corduraMaxima": 100,
+  "poderMaximo": 100,
+  "ataqueBase": 4,
+  "resistenciaBase": 1,
+  "agilidad": 6,
+  "danioCorduraPorGolpe": 1,
+  "danioMoralPorGolpe": 1,
+  "bonificacionCritico": 0.1,
+  "maldito": false,
+  "imagen": "recursos/imagen/enemigos/arquero_bandido_1.png"
+},
+    tipo: "humano",
+    equipo: {
+      arma: items.find((item) => item.id === "arco-corto-recuperado") ?? null,
       armadura: items.find((item) => item.id === "armadura-ligera-antigua") ?? null,
     },
   });

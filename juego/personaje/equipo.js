@@ -1,4 +1,4 @@
-(function inicializarEquipo() {
+﻿(function inicializarEquipo() {
   const juego = window.juego;
   const inventario = window.inventarioGrupo;
   const actionDialog = document.querySelector(".equipment-actions-dialog");
@@ -53,6 +53,7 @@
   }
 
   function clasePuedeEquipar(character, item) {
+    if (character.vida.actual <= 0) return false;
     const clase = character.clase.toLowerCase();
     const claseMagica = ["bruja", "sacerdote"].includes(clase);
     return (!item.magico || claseMagica)
@@ -61,6 +62,16 @@
 
   function personajePuedeUsar(character, item) {
     return clasePuedeEquipar(character, item);
+  }
+
+  function puedeAplicarEfectoArma(character, item) {
+    const arma = character?.equipo?.arma;
+    const tipoArma = arma?.tipo?.toLowerCase();
+    return Boolean(character && character.vida.actual > 0 && item?.efectoEstado
+      && arma?.categoria === "arma"
+      && !arma.magico
+      && !["baston", "libro"].includes(tipoArma)
+      && !arma.efectoPreparado);
   }
 
   function describirEstadisticas(item) {
@@ -85,7 +96,17 @@
     if (item.categoria === "armadura" && stats.length === 0) {
       stats.push("Sin bonificaciones de atributos");
     }
+    if (["arma", "armadura"].includes(item.categoria)) {
+      stats.push(`Estado ${item.etiquetaEstado} (${Math.round(item.eficaciaEstado * 100)} %)`);
+    }
     return stats.join(" · ");
+  }
+
+  function describirObjeto(item) {
+    if (item.esObjetoMision) return `${item.descripcion} Solo se utiliza en puntos de interés.`;
+    if (item.revivir) return `${item.descripcion} Restaura el 25 % de la vida máxima al aliado elegido.`;
+    if (!["arma", "armadura"].includes(item.categoria)) return item.descripcion;
+    return `${item.descripcion} Estado: ${item.etiquetaEstado} (${Math.round(item.eficaciaEstado * 100)} % de eficacia).`;
   }
 
   function personajePuedeRecibirBonificacion(character, item) {
@@ -108,7 +129,7 @@
 
   function recalcularBonificacionPoder(character) {
     const total = character.obtenerBonificacionEquipo("poder");
-    character.poder.maximo = Math.max(1, character.poderMaximoBase + total);
+    character.poder.maximo = Math.max(1, Math.round(character.poderMaximoBase + total));
     character.poder.actual = Math.min(character.poder.actual, character.poder.maximo);
     character._bonificacionPoderEquipo = total;
   }
@@ -207,8 +228,42 @@
     if (item.categoria !== "consumible") {
       throw new TypeError(`${item.nombre} no es un consumible.`);
     }
-    if (!personajePuedeUsar(usuario, item)) {
+    if (!item.revivir && !personajePuedeUsar(usuario, item)) {
       throw new Error(`${usuario.nombre} no puede usar ${item.nombre}.`);
+    }
+
+    if (item.revivir) {
+      if (character.vida.actual > 0) {
+        throw new Error(`${character.nombre} no necesita ser revivido.`);
+      }
+      character.vida.actual = 1;
+      juego.actualizarRecursosTarjeta(character.id);
+      juego.actualizarBonificacionesFormacion?.();
+      character.vida.actual = Math.max(1, Math.ceil(character.vida.maxima * 0.25));
+      inventario.items[index] = null;
+      inventario.actualizar();
+      actualizarPersonaje(character);
+      juego.sonidos?.reproducir("inventario");
+      juego.registrarNovedad?.(`${character.nombre} acaba de revivir y te mira con la mirada vidriosa.`);
+      return item;
+    }
+
+    if (item.efectoEstado) {
+      if (!puedeAplicarEfectoArma(character, item)) {
+        throw new Error(
+          `${character.nombre} necesita un arma convencional sin otro efecto preparado para aplicar ${item.nombre}.`,
+        );
+      }
+      character.equipo.arma.efectoPreparado = { ...item.efectoEstado };
+      inventario.items[index] = null;
+      inventario.actualizar();
+      juego.sonidos?.reproducir("inventario");
+      const efectoNombre = item.efectoEstado.tipo === "veneno" ? "veneno"
+        : item.efectoEstado.tipo === "quemadura" ? "quemadura" : "parálisis";
+      juego.registrarNovedad?.(
+        `${usuario.nombre} aplica ${item.nombre} sobre ${character.equipo.arma.nombre}. El próximo impacto exitoso aplicará ${efectoNombre}.`,
+      );
+      return item;
     }
 
     const resources = {
@@ -226,20 +281,34 @@
         && usuario.id === "sacerdote-condenado"
         && item.magico;
       const bonusAplicado = curacionSacerdote ? Math.round(bonus * 1.1) : bonus;
-      return [resource, Math.min(maximum, resource.actual + bonusAplicado)];
+      return [key, resource, Math.min(maximum, resource.actual + bonusAplicado)];
     });
 
-    if (updatedValues.every(([resource, value]) => resource.actual === value)) {
+    if (updatedValues.every(([, resource, value]) => resource.actual === value)) {
       throw new Error(`${character.nombre} no necesita ninguno de los recursos de ${item.nombre}.`);
     }
 
-    updatedValues.forEach(([resource, value]) => {
+    const etiquetasRecurso = { vida: "vida", cordura: "cordura", poder: "poder" };
+    const recuperaciones = updatedValues
+      .map(([key, resource, value]) => ({
+        etiqueta: etiquetasRecurso[key] ?? key,
+        cantidad: value - resource.actual,
+      }))
+      .filter((recuperacion) => recuperacion.cantidad > 0)
+      .map((recuperacion) => `${recuperacion.cantidad} de ${recuperacion.etiqueta}`);
+
+    updatedValues.forEach(([, resource, value]) => {
       resource.actual = value;
     });
     inventario.items[index] = null;
     inventario.actualizar();
     actualizarPersonaje(character);
     juego.sonidos?.reproducir("inventario");
+    const detalleRecuperacion = recuperaciones.join(" y ");
+    const mensaje = usuario.id === character.id
+      ? `${usuario.nombre} consumió ${item.nombre} y ahora se siente mejor. Recupera ${detalleRecuperacion}.`
+      : `${usuario.nombre} usó ${item.nombre} sobre ${character.nombre}. Recupera ${detalleRecuperacion}.`;
+    juego.registrarNovedad?.(mensaje);
     return item;
   }
 
@@ -257,10 +326,16 @@
   function mostrarOpcionesPersonaje(item, slotNumber) {
     characterOptions.replaceChildren();
     const isConsumable = item.categoria === "consumible";
+    const isRevivePotion = Boolean(item.revivir);
+    const isWeaponCoating = Boolean(item.efectoEstado);
     const combat = isConsumable ? juego.combate?.obtenerEstadoConsumible(item) : null;
     const eligibleCharacters = juego.personajes.filter((character) =>
-      isConsumable
-        ? personajePuedeRecibirBonificacion(character, item)
+      isRevivePotion
+        ? character.vida.actual <= 0
+        : isConsumable
+        ? isWeaponCoating
+          ? puedeAplicarEfectoArma(character, item)
+          : personajePuedeRecibirBonificacion(character, item)
           && (combat?.enCurso
             ? combat.disponible
               && (combat.esGrimorio || character.id === combat.personajeEnTurno?.id)
@@ -271,7 +346,7 @@
     if (combat?.enCurso && !combat.disponible) {
       inventoryDescription.textContent = combat.motivo;
       characterOptions.hidden = true;
-      equipUseButton.textContent = item.categoria === "consumible" ? "Usar" : "Equipar";
+      equipUseButton.textContent = item.categoria === "consumible" ? (item.revivir ? "Revivir" : "Usar") : "Equipar";
       equipUseButton.disabled = true;
       return;
     }
@@ -283,18 +358,26 @@
       if (isConsumable && !combat?.enCurso && item.magico && !personajePuedeUsar(character, item)) {
         return;
       }
-      if (isConsumable && !personajePuedeRecibirBonificacion(character, item)) {
+      if (isRevivePotion && character.vida.actual > 0) {
         return;
       }
-      if (isConsumable && combat?.enCurso && !combat.esGrimorio
+      if (isConsumable && !isRevivePotion && !isWeaponCoating
+        && !personajePuedeRecibirBonificacion(character, item)) {
+        return;
+      }
+      if (isConsumable && !isRevivePotion && !isWeaponCoating && combat?.enCurso && !combat.esGrimorio
         && character.id !== combat.personajeEnTurno?.id) {
         return;
       }
+      if (isConsumable && isWeaponCoating && combat?.enCurso
+        && character.id !== combat.personajeEnTurno?.id) return;
 
       const characterButton = document.createElement("button");
       characterButton.type = "button";
       characterButton.textContent = isConsumable
-        ? eligibleCharacters.includes(character)
+        ? isRevivePotion
+          ? character.nombre
+          : eligibleCharacters.includes(character)
           ? character.nombre
           : `${character.nombre} (sin recursos que recuperar)`
         : character.nombre;
@@ -318,7 +401,15 @@
       characterOptions.append(characterButton);
     });
 
-    inventoryDescription.textContent = isConsumable
+    inventoryDescription.textContent = isRevivePotion
+      ? eligibleCharacters.length > 0
+        ? "Elige a quién quieres devolver a la vida:"
+        : "No hay miembros caídos que puedan recibir esta poción."
+      : isWeaponCoating
+      ? eligibleCharacters.length > 0
+        ? "Elige quién aplicará el efecto sobre su arma equipada."
+        : "Nadie tiene un arma convencional disponible para preparar con este consumible."
+      : isConsumable
       ? eligibleCharacters.length > 0
         ? "Elige quién recibirá el objeto:"
         : "Ningún personaje necesita recuperar estos recursos."
@@ -348,17 +439,23 @@
     activeInventorySlot = slotNumber;
     inventoryTitle.textContent = item.nombre;
     characterOptions.hidden = true;
-    inventoryDescription.textContent = item.descripcion;
+    inventoryDescription.textContent = describirObjeto(item);
     inventoryImage.src = item.imagen;
     inventoryImage.alt = `Imagen de ${item.nombre}`;
     inventoryImage.hidden = false;
-    equipUseButton.disabled = !["arma", "armadura", "especial", "consumible"].includes(item.categoria);
+    equipUseButton.disabled = item.esObjetoMision
+      || !["arma", "armadura", "especial", "consumible"].includes(item.categoria);
+    if (item.revivir && !juego.personajes.some((character) => character.vida.actual <= 0)) {
+      equipUseButton.disabled = true;
+      inventoryDescription.textContent = `${describirObjeto(item)} Todavía no hay aliados caídos.`;
+    }
+    inventoryDropButton.disabled = Boolean(item.esObjetoMision);
     const combat = item.categoria === "consumible" ? juego.combate?.obtenerEstadoConsumible(item) : null;
     if (combat?.enCurso && !combat.disponible) {
       equipUseButton.disabled = true;
-      inventoryDescription.textContent = `${item.descripcion} ${combat.motivo}`;
+      inventoryDescription.textContent = `${describirObjeto(item)} ${combat.motivo}`;
     }
-    equipUseButton.textContent = item.categoria === "consumible" ? "Usar" : "Equipar";
+    equipUseButton.textContent = item.categoria === "consumible" ? (item.revivir ? "Revivir" : "Usar") : "Equipar";
 
     if (!inventoryDialog.open) {
       inventoryDialog.showModal();
@@ -381,8 +478,8 @@
     }
 
     characterOptions.hidden = true;
-    inventoryDescription.textContent = item.descripcion;
-    equipUseButton.textContent = item.categoria === "consumible" ? "Usar" : "Equipar";
+    inventoryDescription.textContent = describirObjeto(item);
+    equipUseButton.textContent = item.categoria === "consumible" ? (item.revivir ? "Revivir" : "Usar") : "Equipar";
   });
 
   inventoryDropButton.addEventListener("click", () => {
@@ -478,6 +575,7 @@
     desequipar,
     soltar,
     usarConsumible,
+    puedeAplicarEfectoArma,
   };
 
   const initialPotion = juego.itemsBase.find((item) => item.id === "pocion-curacion");
@@ -495,6 +593,18 @@
     }));
   }
 
+  const resurrectionPotion = juego.itemsBase.find((item) => item.id === "pocion-de-resurreccion");
+  if (!resurrectionPotion || resurrectionPotion.categoria !== "consumible" || !resurrectionPotion.revivir) {
+    throw new Error("No se encontró la poción de resurrección.");
+  }
+  inventario.agregarItem(new juego.Item({ ...resurrectionPotion, bonificacion: { ...resurrectionPotion.bonificacion } }));
+
+  const initialWeaponPoison = juego.itemsBase.find((item) => item.id === "botella-veneno");
+  if (!initialWeaponPoison || initialWeaponPoison.categoria !== "consumible" || !initialWeaponPoison.efectoEstado) {
+    throw new Error("No se encontró la botella de veneno para probar efectos de estado.");
+  }
+  inventario.agregarItem(new juego.Item({ ...initialWeaponPoison, efectoEstado: { ...initialWeaponPoison.efectoEstado } }));
+
   const initialRing = juego.itemsBase.find((item) => item.id === "anillo-de-cordura");
   if (!initialRing || initialRing.categoria !== "especial") {
     throw new Error("No se encontró el anillo de cordura inicial.");
@@ -507,3 +617,4 @@
   }
   inventario.agregarItem(new juego.Item({ ...initialRestorativeBook }));
 })();
+

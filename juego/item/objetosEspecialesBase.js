@@ -6,6 +6,19 @@
 
   window.juego.objetosEspecialesBase = [
     new Item({
+      id: "llave-salida",
+      categoria: "especial",
+      tipo: "llave",
+      nombre: "Llave de la salida",
+      descripcion: "Una llave antigua que abre la puerta al final de la mazmorra.",
+      nivel: 1,
+      clasesPermitidas: ["todas"],
+      magico: false,
+      imagen: "recursos/imagen/especiales/key_1.png",
+      icono: "🗝️",
+      esObjetoMision: true,
+    }),
+    new Item({
       id: "anillo-de-cordura",
       categoria: "especial",
       tipo: "anillo",

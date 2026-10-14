@@ -2,6 +2,7 @@
   // Busca las tarjetas y el diálogo de ficha en la interfaz.
   const playerBar = document.querySelector(".player-bar");
   const characterDialog = document.querySelector(".character-dialog");
+  const storyButton = characterDialog?.querySelector(".character-story-open");
   const characters = window.juego?.personajes;
 
   if (!(playerBar instanceof HTMLElement)) {
@@ -10,6 +11,10 @@
 
   if (!(characterDialog instanceof HTMLDialogElement)) {
     throw new Error('No se encontró el diálogo ".character-dialog".');
+  }
+
+  if (!(storyButton instanceof HTMLButtonElement)) {
+    throw new Error("Falta el botón para abrir la historia del personaje.");
   }
 
   if (!Array.isArray(characters)) {
@@ -28,10 +33,8 @@
   let characterDraft = null;
 
   function obtenerBonificacionEquipo(character, attribute) {
-    return Object.values(character.equipo).reduce(
-      (total, item) => total + (item?.bonificaciones?.[attribute] ?? 0),
-      0,
-    );
+    return Object.values(character.equipo)
+      .reduce((total, item) => total + (item?.bonificaciones?.[attribute] ?? 0), 0);
   }
 
   function etiquetaAtributo(attribute) {
@@ -40,7 +43,7 @@
 
   function actualizarBonificacionPoder(character) {
     const total = character.obtenerBonificacionEquipo("poder");
-    character.poder.maximo = Math.max(1, character.poderMaximoBase + total);
+    character.poder.maximo = Math.max(1, Math.round(character.poderMaximoBase + total));
     character.poder.actual = Math.min(character.poder.actual, character.poder.maximo);
     character._bonificacionPoderEquipo = total;
   }
@@ -178,6 +181,13 @@
         element.replaceChildren();
         if (item) {
           element.append(document.createTextNode(item.nombre));
+          if (["arma", "armadura"].includes(item.categoria)) {
+            const condition = document.createElement("span");
+            condition.className = "equipment-stat-bonus";
+            condition.textContent = `${item.etiquetaEstado} · ${Math.round(item.eficaciaEstado * 100)} %`;
+            condition.title = "Estado de conservación del equipo";
+            element.append(condition);
+          }
           const bonuses = Object.entries(item.bonificaciones ?? {})
             .filter(([, value]) => value > 0)
             .map(([key, value]) => `+${value} ${etiquetaAtributo(key)}`);
@@ -231,6 +241,11 @@
   }
 
   closeButton.addEventListener("click", () => characterDialog.close());
+  storyButton.addEventListener("click", () => {
+    if (activeCharacter) {
+      window.juego.abrirHistoriaPersonaje?.(activeCharacter, storyButton);
+    }
+  });
   characterDialog.addEventListener("click", (event) => {
     if (event.target === characterDialog) {
       characterDialog.close();
@@ -296,14 +311,11 @@
     renderAttributes();
   });
 
-  // Abre la ficha de cada personaje al pulsar su tarjeta, salvo en las flechas de posición.
+  // La ficha se abre exclusivamente al activar el retrato del personaje.
   playerBar.addEventListener("click", (event) => {
-    if (!(event.target instanceof Element) || event.target.closest(".move-button")) {
-      return;
-    }
-
+    if (!(event.target instanceof Element) || !event.target.closest(".player-portrait-button")) return;
     const card = event.target.closest(".player-card");
-    if (!(card instanceof HTMLElement)) {
+    if (!(card instanceof HTMLElement) || card.classList.contains("is-dead")) {
       return;
     }
 
@@ -312,6 +324,8 @@
       throw new Error(`No se encontró el personaje "${card.dataset.characterId}".`);
     }
 
-    openCharacterDialog(character);
+    if (character.vida.actual > 0) {
+      openCharacterDialog(character);
+    }
   });
 })();

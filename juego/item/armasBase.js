@@ -8,7 +8,7 @@
     new Item({
       id: "espada-larga-oxidada",
       categoria: "arma",
-      tipo: "espada larga",
+      tipo: "espada",
       nombre: "Espada larga oxidada",
       descripcion: "Una espada larga con la hoja cubierta de óxido.",
       nivel: 1,
@@ -110,7 +110,7 @@
     new Item({
       id: "daga-sin-filo",
       categoria: "arma",
-      tipo: "daga",
+      tipo: "espada",
       nombre: "Daga sin filo",
       descripcion: "Una daga sin filo, utilizada seguramente en algunos robos.",
       nivel: 1,

@@ -10,6 +10,7 @@
   }
 
   const personajes = definiciones.map((definicion) => new Personaje(definicion));
+  const playerBar = document.querySelector(".player-bar");
 
   // EQUIPO INICIAL: busca aquí los objetos que comienzan equipados en cada personaje.
   // Para cambiarlo, usa el id del objeto definido en item/armasBase.js o item/armadurasBase.js.
@@ -41,25 +42,25 @@
 
   // Asigna los objetos encontrados arriba a los slots de cada personaje.
   const caballero = personajes.find((personaje) => personaje.id === "caballero-maldito");
-  caballero.equipo.armadura = armaduraInicial;
-  caballero.equipo.arma = armaInicial;
+  caballero.equipo.armadura = new juego.Item({ ...armaduraInicial });
+  caballero.equipo.arma = new juego.Item({ ...armaInicial });
   
   const asesino = personajes.find((personaje) => personaje.id === "asesino");
-  asesino.equipo.arma = arcoInicialAsesino;
-  asesino.equipo.armadura = armaduraInicialAsesino;
+  asesino.equipo.arma = new juego.Item({ ...arcoInicialAsesino });
+  asesino.equipo.armadura = new juego.Item({ ...armaduraInicialAsesino });
 
   const sacerdote = personajes.find((personaje) => personaje.id === "sacerdote-condenado");
-  sacerdote.equipo.arma = armaInicialSacerdote;
-  sacerdote.equipo.armadura = armaduraInicialSacerdote;
+  sacerdote.equipo.arma = new juego.Item({ ...armaInicialSacerdote });
+  sacerdote.equipo.armadura = new juego.Item({ ...armaduraInicialSacerdote });
 
   const bruja = personajes.find((personaje) => personaje.id === "bruja");
-  bruja.equipo.arma = armaInicialBruja;
-  bruja.equipo.armadura = armaduraInicialBruja;
+  bruja.equipo.arma = new juego.Item({ ...armaInicialBruja });
+  bruja.equipo.armadura = new juego.Item({ ...armaduraInicialBruja });
 
   
   personajes.forEach((personaje) => {
     personaje._bonificacionPoderEquipo = personaje.obtenerBonificacionEquipo("poder");
-    personaje.poder.maximo = Math.max(1, personaje.poderMaximoBase + personaje._bonificacionPoderEquipo);
+    personaje.poder.maximo = Math.max(1, Math.round(personaje.poderMaximoBase + personaje._bonificacionPoderEquipo));
     personaje.poder.actual = Math.min(personaje.poder.actual, personaje.poder.maximo);
   });
   juego.personajes = personajes;
@@ -73,6 +74,37 @@
     const resourceList = card.querySelector(".player-card-resources");
     if (!(resourceList instanceof HTMLElement)) {
       throw new Error(`Falta el resumen de recursos en la tarjeta de ${personaje.nombre}.`);
+    }
+    const header = card.querySelector(".player-card-header");
+    let portrait = header?.querySelector(".player-card-portrait");
+    if (header instanceof HTMLElement) {
+      if (!(portrait instanceof HTMLImageElement)) {
+        portrait = document.createElement("img");
+        portrait.className = "player-card-portrait";
+        const portraitButton = document.createElement("button");
+        portraitButton.className = "player-portrait-button";
+        portraitButton.type = "button";
+        portraitButton.append(portrait);
+        header.prepend(portraitButton);
+      }
+    }
+    const estaMuerto = personaje.vida.actual <= 0;
+    const imagenRetrato = estaMuerto
+      ? "recursos/imagen/historia/player_death_r.png"
+      : personaje.imagen;
+    if (portrait instanceof HTMLImageElement) {
+      if (portrait.getAttribute("src") !== imagenRetrato) portrait.src = imagenRetrato;
+      portrait.alt = estaMuerto ? "Retrato de un aliado caído" : `Retrato de ${personaje.nombre}`;
+    }
+    card.classList.toggle("is-dead", estaMuerto);
+    card.tabIndex = estaMuerto ? -1 : 0;
+    card.setAttribute("aria-disabled", String(estaMuerto));
+    const portraitButton = card.querySelector(".player-portrait-button");
+    if (portraitButton instanceof HTMLButtonElement) {
+      portraitButton.disabled = estaMuerto;
+      portraitButton.setAttribute("aria-label", estaMuerto
+        ? `Retrato de ${personaje.nombre}, fuera de combate`
+        : `Abrir ficha de ${personaje.nombre}`);
     }
 
     const resources = [
@@ -120,11 +152,14 @@
       const equippedLabel = slotName === "armadura" ? "Armadura equipada"
         : slotName === "arma" ? "Arma equipada"
           : "Ítem especial equipado";
+      const stateLabel = item && ["arma", "armadura"].includes(item.categoria)
+        ? ` · ${item.etiquetaEstado} (${Math.round(item.eficaciaEstado * 100)} %)`
+        : "";
       slot.replaceChildren();
-      slot.disabled = item === null && slotName !== "arma";
+      slot.disabled = estaMuerto || (item === null && slotName !== "arma");
       slot.setAttribute(
         "aria-label",
-        item ? `${equippedLabel}: ${item.nombre}`
+        item ? `${equippedLabel}: ${item.nombre}${stateLabel}`
           : slotName === "arma" ? "Ataque básico: puños"
             : `Espacio de ${slotLabel.toLowerCase()} vacío`,
       );
@@ -146,7 +181,7 @@
         image.setAttribute("aria-hidden", "true");
         slot.append(image);
       }
-      slot.title = item ? `${item.nombre} — ${slotLabel}`
+      slot.title = item ? `${item.nombre} — ${slotLabel}${stateLabel}`
         : slotName === "arma" ? "Ataque básico: puños" : slotLabel;
     });
 
@@ -174,16 +209,29 @@
 
   personajes.forEach(renderizarRecursosTarjeta);
 
+  function ordenarTarjetasPorEstado() {
+    if (!(playerBar instanceof HTMLElement)) return;
+    const cards = [...playerBar.querySelectorAll(".player-card")];
+    const vivos = cards.filter((card) => !card.classList.contains("is-dead"));
+    const caidos = cards.filter((card) => card.classList.contains("is-dead"));
+    playerBar.append(...vivos, ...caidos);
+    juego.actualizarControlesFormacion?.();
+  }
+
   juego.actualizarRecursosTarjeta = (id) => {
     const personaje = personajes.find((entry) => entry.id === id);
     if (!personaje) {
       throw new Error(`No existe un personaje con el identificador "${id}".`);
     }
 
-    personaje.poder.maximo = Math.max(1, personaje.poderMaximoBase + personaje.obtenerBonificacionEquipo("poder"));
+    personaje.poder.maximo = Math.max(
+      1,
+      Math.round(personaje.poderMaximoBase + personaje.obtenerBonificacionEquipo("poder")),
+    );
     personaje.poder.actual = Math.min(personaje.poder.actual, personaje.poder.maximo);
 
     renderizarRecursosTarjeta(personaje);
+    ordenarTarjetasPorEstado();
   };
 
   juego.actualizarProgresoTarjeta = (personaje) => {
@@ -193,7 +241,7 @@
   juego.actualizarBonificacionesFormacion = () => {
     const orden = [...document.querySelectorAll(".player-bar .player-card")]
       .map((card) => personajes.find((personaje) => personaje.id === card.dataset.characterId))
-      .filter(Boolean);
+      .filter((personaje) => personaje && personaje.vida.actual > 0);
     const vidaPorPosicion = [15, 10, 5, 0];
     const corduraPorPosicion = [15, 10, 5, 0];
     const indiceBruja = orden.findIndex((personaje) => personaje.id === "bruja");

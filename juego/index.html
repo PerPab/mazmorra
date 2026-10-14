@@ -16,22 +16,22 @@
         <nav class="main-menu-options" aria-label="Menú principal">
           <button class="main-menu-button" type="button" data-menu-action="continue" disabled>Continuar aventura</button>
           <button class="main-menu-button" type="button" data-menu-action="new">Partida nueva</button>
-          <button class="main-menu-button" type="button" data-menu-action="characters">Los Elegidos</button>
+          <button class="main-menu-button" type="button" data-menu-action="bestiary">Bestiario</button>
           <button class="main-menu-button main-menu-button-secondary" type="button" data-menu-action="options">Opciones</button>
         </nav>
         <p class="main-menu-status" aria-live="polite"></p>
       </section>
     </main>
 
-    <main class="chosen-characters-screen" id="chosen-characters-screen" aria-labelledby="chosen-characters-title" hidden>
-      <header class="chosen-characters-header">
-        <div>
-          <p class="main-menu-eyebrow">El grupo</p>
-          <h1 id="chosen-characters-title">Los Elegidos</h1>
-        </div>
-        <button class="interface-button chosen-characters-back" type="button">Volver al menú</button>
-      </header>
-      <section class="chosen-characters-grid" aria-label="Personajes del grupo"></section>
+    <main class="bestiary-screen" id="bestiary-screen" aria-labelledby="bestiary-title" hidden>
+      <section class="bestiary-page">
+        <header class="bestiary-header">
+          <p class="main-menu-eyebrow">Guía de criaturas y aventureros</p>
+          <h1 id="bestiary-title">Bestiario</h1>
+        </header>
+        <div class="bestiary-list"></div>
+        <button class="main-menu-button bestiary-back" type="button">Volver al menú</button>
+      </section>
     </main>
 
     <dialog class="character-story-dialog" aria-labelledby="character-story-title">
@@ -49,6 +49,10 @@
       <img class="adventure-intro-image" alt="" hidden>
       <p class="adventure-intro-description"></p>
       <button class="adventure-enter" type="button">Entrar en la mazmorra</button>
+    </dialog>
+
+    <dialog class="adventure-intro-dialog level-transition-dialog" aria-label="Nivel 2">
+      <button class="adventure-enter level-transition-close" type="button">Cerrar</button>
     </dialog>
 
     <div class="game-view" id="game-view" hidden>
@@ -69,10 +73,15 @@
       </header>
     <main class="game-screen" aria-label="Interfaz del juego">
       <aside class="interface-column interface-column-left" aria-label="Inventario compartido del grupo">
+        <p class="inventory-currency" aria-live="polite">Monedas: 0 &#129689;</p>
+        <p class="inventory-provisions" aria-live="polite">Raciones: 0</p>
         <ol class="inventory-grid" aria-label="Espacios del inventario"></ol>
       </aside>
       <section class="interface-center" aria-label="Área principal del juego">
         <section class="scene-panel" aria-label="Escena del juego y futuros encuentros">
+          <figure class="exploration-scene" hidden>
+            <img class="exploration-scene-image" alt="">
+          </figure>
           <div class="encounter-enemies" role="list" aria-label="Enemigos del encuentro" hidden></div>
         </section>
         <section class="event-panel" aria-label="Mensajes del juego">
@@ -96,9 +105,9 @@
     </main>
 
     <section class="player-bar" aria-label="Pantalla de grupo">
-      <article class="player-card" data-character-id="caballero-maldito" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight" aria-roledescription="tarjeta de aliado">
+      <article class="player-card" data-character-id="caballero-maldito" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <h2><button class="character-open" type="button">Caballero maldito</button></h2>
+          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Caballero a la izquierda">&#x2190;</button><h2 class="character-open">Caballero</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Caballero a la derecha">&#x2192;</button></div>
           <p class="player-position" aria-label="Posición en el grupo"></p>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
@@ -112,9 +121,9 @@
           <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
         </div>
       </article>
-      <article class="player-card" data-character-id="bruja" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight" aria-roledescription="tarjeta de aliado">
+      <article class="player-card" data-character-id="bruja" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <h2><button class="character-open" type="button">Bruja</button></h2>
+          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Bruja a la izquierda">&#x2190;</button><h2 class="character-open">Bruja</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Bruja a la derecha">&#x2192;</button></div>
           <p class="player-position" aria-label="Posición en el grupo"></p>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
@@ -128,9 +137,9 @@
           <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
         </div>
       </article>
-      <article class="player-card" data-character-id="sacerdote-condenado" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight" aria-roledescription="tarjeta de aliado">
+      <article class="player-card" data-character-id="sacerdote-condenado" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <h2><button class="character-open" type="button">Sacerdote condenado</button></h2>
+          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Sacerdote a la izquierda">&#x2190;</button><h2 class="character-open">Sacerdote</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Sacerdote a la derecha">&#x2192;</button></div>
           <p class="player-position" aria-label="Posición en el grupo"></p>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
@@ -144,9 +153,9 @@
           <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
         </div>
       </article>
-      <article class="player-card" data-character-id="asesino" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight" aria-roledescription="tarjeta de aliado">
+      <article class="player-card" data-character-id="asesino" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <h2><button class="character-open" type="button">Asesino</button></h2>
+          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Asesino a la izquierda">&#x2190;</button><h2 class="character-open">Asesino</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Asesino a la derecha">&#x2192;</button></div>
           <p class="player-position" aria-label="Posición en el grupo"></p>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
@@ -168,6 +177,7 @@
         <div>
           <p class="character-dialog-eyebrow">Ficha de personaje</p>
           <img class="dialog-portrait" alt="">
+          <button class="character-story-open" type="button">Historia</button>
           <h2 id="character-dialog-title"></h2>
           <p class="character-meta"></p>
         </div>
@@ -246,6 +256,24 @@
         <button class="poi-close" type="button">Cerrar</button>
       </div>
     </dialog>
+    <dialog class="merchant-dialog" aria-labelledby="merchant-title">
+      <header class="merchant-header">
+        <div><p class="poi-dialog-eyebrow">Comerciante de la mazmorra</p><h2 id="merchant-title">Mercader enano</h2></div>
+        <p class="merchant-balance" aria-live="polite"></p>
+      </header>
+      <p class="merchant-message" aria-live="polite">Revisa el género o vende lo que ya no necesites.</p>
+      <div class="merchant-columns">
+        <section><h3>Mercancía</h3><div class="merchant-stock" aria-label="Mercancía del vendedor"></div></section>
+        <section><h3>Inventario del grupo</h3><div class="merchant-inventory" aria-label="Objetos del grupo"></div></section>
+      </div>
+      <button class="merchant-close" type="button">Cerrar</button>
+    </dialog>
+    <dialog class="character-death-dialog" aria-labelledby="character-death-title">
+      <h2 id="character-death-title">Un aliado ha caído</h2>
+      <img class="character-death-image" src="recursos/imagen/historia/tumba_1.png" alt="Una tumba en la oscuridad">
+      <p class="character-death-description"></p>
+      <button class="character-death-close" type="button">Cerrar</button>
+    </dialog>
     <dialog class="combat-action-dialog" aria-labelledby="combat-action-title">
       <h2 id="combat-action-title"></h2>
       <p class="combat-action-status"></p>
@@ -302,24 +330,28 @@
     <script src="enemigo/enemigo.js" defer></script>
     <script src="enemigo/criaturasBase.js" defer></script>
     <script src="enemigo/enemigosBase.js" defer></script>
-    <script src="puntosInteresBase.js" defer></script>
-    <script src="puntosInteresCreados.js" defer></script>
-    <script src="mapasBase.js" defer></script>
-    <script src="mapasCreados.js" defer></script>
-    <script src="recurso-editor.js" defer></script>
+    <script src="datos/puntosInteresBase.js" defer></script>
+    <script src="datos/puntosInteresCreados.js" defer></script>
+    <script src="datos/mapasBase.js" defer></script>
+    <script src="datos/mapasCreados.js" defer></script>
+    <script src="niveles/demo.js" defer></script>
+    <script src="niveles/nivel_1.js" defer></script>
+    <script src="niveles/nivel_2.js" defer></script>
+    <script src="app/recurso-editor.js" defer></script>
     <script src="personaje/personaje.js" defer></script>
     <script src="personaje/personajesBase.js" defer></script>
     <script src="historias/trasfondos.js" defer></script>
     <script src="personaje/personajes.js" defer></script>
     <script src="personaje/progresion.js" defer></script>
-    <script src="../juego.js" defer></script>
-    <script src="sonidos.js" defer></script>
-    <script src="musica.js" defer></script>
+    <script src="personaje/formacion.js" defer></script>
+    <script src="audio/sonidos.js" defer></script>
+    <script src="audio/musica.js" defer></script>
     <script src="inventario/inventario.js" defer></script>
     <script src="personaje/equipo.js" defer></script>
     <script src="personaje/modalPersonaje.js" defer></script>
     <script src="combate/combate.js" defer></script>
-    <script src="mazmorra.js" defer></script>
-    <script src="menu.js" defer></script>
+    <script src="exploracion/mazmorra.js" defer></script>
+    <script src="comercio/vendedor.js" defer></script>
+    <script src="app/menu.js" defer></script>
   </body>
 </html>

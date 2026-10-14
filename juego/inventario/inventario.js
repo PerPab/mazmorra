@@ -1,6 +1,10 @@
 // El inventario es compartido por el grupo y reserva 18 espacios individuales.
 const inventario = Array(18).fill(null);
+let monedas = 0;
+let raciones = 0;
 const inventoryGrid = document.querySelector(".inventory-grid");
+const currencyDisplay = document.querySelector(".inventory-currency");
+const provisionsDisplay = document.querySelector(".inventory-provisions");
 
 if (!(inventoryGrid instanceof HTMLOListElement)) {
   throw new Error('No se encontró la grilla ".inventory-grid".');
@@ -8,6 +12,8 @@ if (!(inventoryGrid instanceof HTMLOListElement)) {
 
 // Dibuja cada espacio usando el contenido actual del array.
 function renderizarInventario() {
+  if (currencyDisplay) currencyDisplay.textContent = `Monedas: ${monedas} \u{1FA99}`;
+  if (provisionsDisplay) provisionsDisplay.textContent = `Raciones: ${raciones}`;
   inventoryGrid.replaceChildren();
 
   inventario.forEach((item, index) => {
@@ -92,6 +98,37 @@ function retirarItem(numeroEspacio) {
 // Expone la lista y sus operaciones para que otros scripts puedan administrar el inventario.
 window.inventarioGrupo = {
   items: inventario,
+  get monedas() { return monedas; },
+  get raciones() { return raciones; },
+  agregarRaciones(cantidad) {
+    if (!Number.isInteger(cantidad) || cantidad < 0) throw new RangeError("Las raciones deben ser un entero no negativo.");
+    raciones += cantidad;
+    renderizarInventario();
+    return raciones;
+  },
+  consumirRacion() {
+    if (raciones <= 0) return false;
+    raciones -= 1;
+    renderizarInventario();
+    return true;
+  },
+  iniciarPartida() {
+    raciones = 10;
+    renderizarInventario();
+    return raciones;
+  },
+  agregarMonedas(cantidad) {
+    if (!Number.isInteger(cantidad) || cantidad < 0) throw new RangeError("Las monedas deben ser un entero no negativo.");
+    monedas += cantidad;
+    renderizarInventario();
+    return monedas;
+  },
+  gastarMonedas(cantidad) {
+    if (!Number.isInteger(cantidad) || cantidad < 0 || cantidad > monedas) return false;
+    monedas -= cantidad;
+    renderizarInventario();
+    return true;
+  },
   agregarItem,
   retirarItem,
   actualizar: renderizarInventario,

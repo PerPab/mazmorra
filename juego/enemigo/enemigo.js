@@ -28,6 +28,7 @@
       maldito = false,
       danioCorduraPorGolpe = 5,
       danioMoralPorGolpe = 1,
+      efectoGolpe = null,
       equipo = {},
       descripcion,
     }) {
@@ -65,6 +66,13 @@
       if (typeof maldito !== "boolean") {
         throw new TypeError("maldito debe ser un valor booleano.");
       }
+      if (efectoGolpe !== null && (!efectoGolpe || efectoGolpe.tipo !== "veneno"
+        || !Number.isFinite(efectoGolpe.probabilidad)
+        || efectoGolpe.probabilidad < 0 || efectoGolpe.probabilidad > 1
+        || !Number.isInteger(efectoGolpe.danioPorTurno) || efectoGolpe.danioPorTurno < 1
+        || !Number.isInteger(efectoGolpe.duracion) || efectoGolpe.duracion < 1)) {
+        throw new TypeError("efectoGolpe debe definir un veneno con probabilidad, daño y duración válidos.");
+      }
 
       const arma = equipo.arma ?? null;
       const armadura = equipo.armadura ?? null;
@@ -92,6 +100,7 @@
       this.maldito = maldito;
       this.danioCorduraPorGolpe = danioCorduraPorGolpe;
       this.danioMoralPorGolpe = danioMoralPorGolpe;
+      this.efectoGolpe = efectoGolpe ? { ...efectoGolpe } : null;
       this.equipo = { arma, armadura };
       this.descripcion = descripcion.trim();
     }

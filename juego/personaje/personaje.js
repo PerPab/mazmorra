@@ -33,6 +33,7 @@ class Personaje {
     agilidad,
     danioMoral = 1,
     bonificacionCritico = 0,
+    proteccionEmboscada = 0,
     puntosHabilidad = 0,
     experiencia = 0,
     experienciaNecesaria = 100,
@@ -71,6 +72,9 @@ class Personaje {
     }
     if (!Number.isFinite(bonificacionCritico) || bonificacionCritico < 0 || bonificacionCritico > 1) {
       throw new RangeError("bonificacionCritico debe estar entre 0 y 1.");
+    }
+    if (!Number.isFinite(proteccionEmboscada) || proteccionEmboscada < 0 || proteccionEmboscada > 1) {
+      throw new RangeError("proteccionEmboscada debe estar entre 0 y 1.");
     }
 
     if (experienciaNecesaria < 1) {
@@ -124,6 +128,7 @@ class Personaje {
     this.agilidad = agilidad;
     this.danioMoral = danioMoral;
     this.bonificacionCritico = bonificacionCritico;
+    this.proteccionEmboscada = proteccionEmboscada;
     this.puntosHabilidad = puntosHabilidad;
     this.experiencia = experiencia;
     this.experienciaNecesaria = experienciaNecesaria;
@@ -151,17 +156,27 @@ class Personaje {
   }
 
   obtenerBonificacionEquipo(atributo) {
-    return Object.values(this.equipo).reduce((total, item) => total + (item?.bonificaciones?.[atributo] ?? 0), 0);
+    return Object.values(this.equipo)
+      .reduce((total, item) => total + (item?.bonificaciones?.[atributo] ?? 0), 0);
+  }
+
+  obtenerResistenciaEquipo(atributo) {
+    return Object.values(this.equipo).reduce((total, item) => {
+      const eficaciaArmadura = item?.categoria === "armadura"
+        ? item.eficaciaEstado ?? 1
+        : 1;
+      return total + (item?.bonificaciones?.[atributo] ?? 0) * eficaciaArmadura;
+    }, 0);
   }
 
   get resistenciaFisicaCombate() {
     return Math.floor(
-      (this.resistenciaFisica + this.obtenerBonificacionEquipo("resistenciaFisica")) * this.eficienciaCombate,
+      (this.resistenciaFisica + this.obtenerResistenciaEquipo("resistenciaFisica")) * this.eficienciaCombate,
     );
   }
 
   get resistenciaCorduraCombate() {
-    return Math.floor((this.resistenciaCordura + this.obtenerBonificacionEquipo("resistenciaCordura")) * this.eficienciaCombate);
+    return Math.floor((this.resistenciaCordura + this.obtenerResistenciaEquipo("resistenciaCordura")) * this.eficienciaCombate);
   }
 
   get agilidadEfectiva() {
