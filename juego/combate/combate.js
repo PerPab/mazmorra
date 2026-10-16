@@ -38,16 +38,24 @@
 
   const DELAY_MS = 600;
   const MAX_ROUNDS = 50;
-  const MAX_FORMATION_RANK = 4;
   const MULTIPLICADOR_EVASION_ATAQUE_AREA = 0.5;
+  const PENALIZACION_FALLO_POR_POSICION = 0.05;
+  const PENALIZACION_FALLO_DISTANCIA_MAXIMA = 0.15;
+  const PROBABILIDAD_MAXIMA_FALLO_ATAQUE = 0.5;
   const BONIFICACION_HUIDA_ASESINO = 0.08;
   const PROBABILIDAD_FALLO_CURACION = 0.1;
+  const PROBABILIDAD_FALLO_HECHIZO_RESTAURATIVO = PROBABILIDAD_FALLO_CURACION;
   const CORDURA_POR_ENEMIGO_DERROTADO = 5;
+  const RECUPERACION_PODER_FIN_COMBATE = 0.2;
   let combatInProgress = false;
   let personajeEnTurno = null;
   let objetivosDelTurno = [];
   let grupoDelEncuentro = [];
+  let participantesEncuentro = [];
+  let danioPorPersonajeEncuentro = null;
+  let enemigosDelEncuentro = [];
   let resolverAccionTurno = null;
+  let consumiblesUsadosEsteTurno = new Set();
   let fugitivosDelEncuentro = new Set();
   let agilidadReducidaEncuentro = new Map();
   let emboscadaPendiente = false;
@@ -62,6 +70,93 @@
   let equipoUsadoEncuentro = new Set();
   let caidosDuranteCombate = new Set();
   let efectosEstadoEncuentro = new Map();
+  let personajesCubiertos = new Set();
+  let contraataquesPreparados = new Set();
+  let mitigacionCaballeroFasesEnemigas = 0;
+  let proteccionesMagicas = new Map();
+  let aliadosConCriticoAsesinoPendiente = new Set();
+
+  function costePuntosAccion(tipo, arma = personajeEnTurno?.equipo.arma, perfil = null) {
+    if (tipo === "habilidad") return 0;
+    if (["cubrirse", "revivir"].includes(tipo)) return 1;
+    if (tipo === "consumible") return 2;
+    if (tipo === "equipar") return 2;
+    if (tipo === "hechizoRestauracion") return perfil?.costePA ?? 3;
+    if (tipo === "area") return arma?.ataquesEspeciales?.area?.costePA ?? 4;
+    if (tipo === "dirigido") return arma?.ataquesEspeciales?.dirigido?.costePA ?? 3;
+    if (tipo === "basico") return arma?.costePABasico ?? 2;
+    return 0;
+  }
+
+  function probabilidadCriticoEnCombate(personaje) {
+    const bonificacionAsesino = aliadosConCriticoAsesinoPendiente.has(personaje.id) ? 0.10 : 0;
+    return Math.min(1, personaje.probabilidadCritico + bonificacionAsesino);
+  }
+
+  function obtenerDescripcionHabilidadEspecial(personaje) {
+    if (personaje.id === "caballero-maldito") return { nombre: "Guardia férrea", descripcion: "Mitiga 15 % del daño del grupo durante una ronda de enemigos." };
+    if (personaje.id === "bruja") return { nombre: "Pulso vital", descripcion: "Restaura hasta 50 de vida al grupo." };
+    if (personaje.id === "sacerdote-condenado") return { nombre: "Consuelo sagrado", descripcion: "Restaura hasta 50 de cordura al grupo." };
+    if (personaje.id === "asesino") return { nombre: "Instinto letal", descripcion: "Da +10 puntos porcentuales de crítico a los demás aliados por un turno cada uno." };
+    return null;
+  }
+
+  function puedeActivarHabilidadEspecial(personaje) {
+    if (!personaje || personaje.habilidadEspecialAgotada) return false;
+    const aliados = grupoDelEncuentro.filter((aliado) => estaVivoCombatiente(aliado)
+      && !fugitivosDelEncuentro.has(aliado));
+    if (personaje.id === "caballero-maldito") return enemigosDelEncuentro.some(estaVivoCombatiente);
+    if (personaje.id === "bruja") return aliados.some((aliado) => aliado.vida.actual < aliado.vida.maxima);
+    if (personaje.id === "sacerdote-condenado") return aliados.some((aliado) => aliado.cordura.actual < aliado.cordura.maxima);
+    if (personaje.id === "asesino") return aliados.some((aliado) => aliado !== personaje);
+    return false;
+  }
+
+  function activarHabilidadEspecial(personaje) {
+    if (!puedeActivarHabilidadEspecial(personaje)) return false;
+    const aliados = grupoDelEncuentro.filter((aliado) => estaVivoCombatiente(aliado)
+      && !fugitivosDelEncuentro.has(aliado));
+    personaje.habilidadEspecialAgotada = true;
+
+    if (personaje.id === "caballero-maldito") {
+      mitigacionCaballeroFasesEnemigas = 1;
+      registrarSuceso("Caballero activa Guardia férrea: el grupo mitigará 15 % del daño durante la próxima ronda enemiga.");
+    } else if (personaje.id === "bruja") {
+      let total = 0;
+      aliados.forEach((aliado) => {
+        const antes = aliado.vida.actual;
+        aliado.vida.actual = Math.min(aliado.vida.maxima, antes + 50);
+        const curado = aliado.vida.actual - antes;
+        total += curado;
+        if (curado > 0) juego.actualizarRecursosTarjeta(aliado.id);
+      });
+      registrarSuceso(`Bruja activa Pulso vital y restaura ${total} puntos de vida al grupo.`);
+    } else if (personaje.id === "sacerdote-condenado") {
+      let total = 0;
+      aliados.forEach((aliado) => {
+        const antes = aliado.cordura.actual;
+        aliado.cordura.actual = Math.min(aliado.cordura.maxima, antes + 50);
+        const restaurada = aliado.cordura.actual - antes;
+        total += restaurada;
+        if (restaurada > 0) juego.actualizarRecursosTarjeta(aliado.id);
+      });
+      registrarSuceso(`Sacerdote activa Consuelo sagrado y restaura ${total} puntos de cordura al grupo.`);
+    } else if (personaje.id === "asesino") {
+      aliadosConCriticoAsesinoPendiente = new Set(aliados
+        .filter((aliado) => aliado !== personaje)
+        .map((aliado) => aliado.id));
+      registrarSuceso("Asesino activa Instinto letal: los demás aliados reciben +10 puntos porcentuales de crítico durante su próximo turno.");
+    }
+    return true;
+  }
+
+  function obtenerBonificacionContra(arma, objetivo) {
+    if (!(objetivo instanceof Enemigo)) return 0;
+    const bonificaciones = arma?.bonificacionesContra ?? {};
+    const tieneArmadura = objetivo.equipo?.armadura?.categoria === "armadura";
+    return (tieneArmadura ? bonificaciones.blindado ?? 0 : 0)
+      + (objetivo.maldito ? bonificaciones.maldito ?? 0 : 0);
+  }
 
   function registrarEquipoUsado(personaje) {
     ["arma", "armadura"].forEach((slot) => {
@@ -77,10 +172,57 @@
     return "dañado";
   }
 
-  function crearInstanciaBotin(item) {
+  function crearInstanciaBotin(item, generarVariante = true) {
     const equipo = ["arma", "armadura"].includes(item.categoria);
+    const propiedadesArmadura = generarVariante && item.categoria === "armadura"
+      ? juego.generarPropiedadesArmadura?.(item) ?? []
+      : [];
+    const propiedadesAnillo = generarVariante && item.categoria === "especial" && item.tipo === "anillo"
+      ? juego.generarPropiedadesAnillo?.(item) ?? []
+      : [];
+    const propiedadesGeneradas = [...propiedadesArmadura, ...propiedadesAnillo];
+    const bonificacionesGeneradas = propiedadesGeneradas.reduce((bonificaciones, propiedad) => {
+      Object.entries(propiedad.bonificaciones ?? {}).forEach(([atributo, valor]) => {
+        bonificaciones[atributo] = (bonificaciones[atributo] ?? 0) + valor;
+      });
+      return bonificaciones;
+    }, { ...(item.bonificaciones ?? {}) });
+    const proteccionCorduraGenerada = propiedadesAnillo.reduce((total, propiedad) => total + (propiedad.proteccionCordura ?? 0), item.proteccionCordura ?? 0);
+    const proteccionMoralGenerada = propiedadesAnillo.reduce((total, propiedad) => total + (propiedad.proteccionMoral ?? 0), item.proteccionMoral ?? 0);
+    const nombresPropiedad = {
+      reforzada: "reforzada", protectora: "protectora", serena: "serena", flexible: "flexible",
+      critica: "crítica", imbuida: "imbuida", fortificada: "fortificada", encantada: "encantada",
+      apaciguadora: "apaciguadora", liviana: "liviana", certera: "certera", potenciada: "potenciada",
+      inquebrantable: "inquebrantable", runica: "rúnica", serenadora: "serenadora", eterea: "etérea",
+      letal: "letal", sobrecargada: "sobrecargada",
+      "fuerza-fisica": "fuerza", "resguardo-magico": "resguardo mágico",
+      "resguardo-fisico": "resguardo físico", sereno: "sereno", agil: "ágil",
+      vigoroso: "vigoroso", concentrado: "concentrado", imbuido: "imbuido",
+      arcano: "arcano", critico: "crítico", fortalecido: "fortalecido",
+      fortificado: "fortificado", apaciguador: "apaciguador", liviano: "liviano",
+      vital: "vital", centrado: "centrado", potenciado: "potenciado", hechicero: "hechicero",
+      certero: "certero", "arcano-superior": "arcano superior", runico: "rúnico",
+      inexpugnable: "inexpugnable", imperturbable: "imperturbable", gracil: "grácil",
+      robusto: "robusto", voluntad: "voluntad", mago: "mago", mortal: "mortal",
+    };
+    const sufijoPropiedades = propiedadesGeneradas.length > 0
+      ? ` — ${propiedadesGeneradas.map((propiedad) => nombresPropiedad[propiedad.id] ?? propiedad.id).join(" y ")}`
+      : "";
     return new juego.Item({
       ...item,
+      ...(propiedadesGeneradas.length > 0 ? {
+        nombre: `${item.nombre}${sufijoPropiedades}`,
+        plantillaId: item.id,
+        efectos: [...new Set([...(item.efectos ?? []), ...propiedadesGeneradas.map((propiedad) => propiedad.id)])],
+        bonificaciones: bonificacionesGeneradas,
+        ...(propiedadesAnillo.length > 0 ? {
+          proteccionCordura: proteccionCorduraGenerada,
+          proteccionMoral: proteccionMoralGenerada,
+        } : {}),
+      } : {}),
+      ...(generarVariante && item.subtipo === "libro-restaurativo" && !item.esObjetoMision
+        ? { hechizosRestauracion: window.juego.generarHechizosRestauracion(item.nivel) }
+        : {}),
       ...(equipo ? { estado: sortearEstadoBotin(), durabilidad: undefined } : {}),
     });
   }
@@ -114,6 +256,7 @@
     const choice = {
       tipo: button.dataset.attackType,
       objetivoId: button.dataset.targetId ?? null,
+      hechizoId: button.dataset.spellId ?? null,
       inventarioSlot: button.dataset.inventorySlot
         ? Number(button.dataset.inventorySlot)
         : null,
@@ -142,7 +285,11 @@
   });
 
   function esperarTurno() {
-    return new Promise((resolve) => window.setTimeout(resolve, DELAY_MS));
+    return new Promise((resolve) => window.setTimeout(resolve, DELAY_MS)).then(async () => {
+      while (combatInProgress && juego.combateAutomatico && document.querySelector("dialog[open]")) {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      }
+    });
   }
 
   function intentarHuirDelEncuentro() {
@@ -168,14 +315,37 @@
   }
   juego.registrarNovedad = registrarSuceso;
 
+  function restaurarPoderTrasCombate(grupo) {
+    grupo.filter((personaje) => estaVivoCombatiente(personaje)).forEach((personaje) => {
+      const poderAntes = personaje.poder.actual;
+      const recuperacion = Math.ceil(personaje.poder.maximo * RECUPERACION_PODER_FIN_COMBATE);
+      personaje.poder.actual = Math.min(personaje.poder.maximo, poderAntes + recuperacion);
+      const recuperado = personaje.poder.actual - poderAntes;
+      if (recuperado > 0) {
+        registrarSuceso(`${personaje.nombre} recupera ${recuperado} de Poder al terminar el combate.`);
+        juego.actualizarRecursosTarjeta(personaje.id);
+      }
+    });
+  }
+
   function renderizarGrupoEnemigo(enemigos, fugitivos = new Set()) {
     encounterEnemies.replaceChildren();
     encounterEnemies.setAttribute("aria-label", "Enemigos del encuentro");
-    enemigos.forEach((enemigo) => {
+    const enemigosVivos = enemigos.filter(estaVivoCombatiente).sort((a, b) => (
+      obtenerPosicionFormacionEnemigo(a, enemigos, fugitivos)
+        - obtenerPosicionFormacionEnemigo(b, enemigos, fugitivos)
+    ));
+    enemigosVivos.forEach((enemigo) => {
       const card = document.createElement("figure");
       card.className = "encounter-enemy-card";
       card.setAttribute("role", "listitem");
       card.dataset.enemyId = enemigo.id;
+      const posicion = obtenerPosicionFormacionEnemigo(enemigo, enemigos, fugitivos);
+      card.dataset.formationPosition = String(posicion);
+
+      const formationLabel = document.createElement("span");
+      formationLabel.className = "encounter-enemy-formation";
+      formationLabel.textContent = ["", "Frente", "Centro", "Retaguardia"][posicion];
 
       const health = document.createElement("div");
       health.className = "encounter-enemy-health";
@@ -206,11 +376,102 @@
       status.hidden = true;
       status.setAttribute("aria-live", "polite");
 
-      card.append(health, image, name, status);
+      card.append(formationLabel, health, image, name, status);
       encounterEnemies.append(card);
       actualizarEstadoEnemigoPanel(enemigo, fugitivos);
     });
-    encounterEnemies.hidden = enemigos.length === 0;
+    encounterEnemies.hidden = enemigosVivos.length === 0;
+  }
+
+  function obtenerAlcanceMaximoEnemigo(enemigo) {
+    const arma = enemigo.equipo?.arma;
+    return Math.max(
+      1,
+      arma?.alcance ?? 1,
+      ...(arma?.ataquesEspeciales
+        ? Object.values(arma.ataquesEspeciales).map((ataque) => ataque?.alcance ?? arma.alcance ?? 1)
+        : []),
+      ...(enemigo.ataques ?? []).map((ataque) => ataque.alcance ?? 1),
+    );
+  }
+
+  function asignarFormacionEnemiga(enemigos) {
+    enemigos.forEach((enemigo) => {
+      const armadura = enemigo.equipo?.armadura;
+      const proteccion = (enemigo.resistenciaBase ?? 0)
+        + (armadura?.bonificaciones?.resistenciaFisica ?? 0);
+      const alcance = obtenerAlcanceMaximoEnemigo(enemigo);
+      const armaMagica = Boolean(enemigo.equipo?.arma?.magico);
+      const armaduraPesada = armadura?.tipo === "pesada";
+      let posicion = 2;
+
+      if ((armaduraPesada || proteccion >= 3) && alcance <= 2) {
+        posicion = 1;
+      } else if (alcance >= 3 || (armaMagica && proteccion < 3)) {
+        posicion = 3;
+      }
+
+      enemigo.posicionFormacion = posicion;
+    });
+
+    if (enemigos.length === 1) {
+      enemigos[0].posicionFormacion = 1;
+    } else if (enemigos.length > 1 && !enemigos.some((enemigo) => enemigo.posicionFormacion === 1)) {
+      const candidatoFrontal = [...enemigos].sort((a, b) => {
+        const proteccionA = (a.resistenciaBase ?? 0) + (a.equipo?.armadura?.bonificaciones?.resistenciaFisica ?? 0);
+        const proteccionB = (b.resistenciaBase ?? 0) + (b.equipo?.armadura?.bonificaciones?.resistenciaFisica ?? 0);
+        return proteccionB - proteccionA || obtenerAlcanceMaximoEnemigo(a) - obtenerAlcanceMaximoEnemigo(b);
+      })[0];
+      candidatoFrontal.posicionFormacion = 1;
+    }
+  }
+
+  function obtenerPosicionFormacionEnemigo(
+    enemigo,
+    enemigos = enemigosDelEncuentro,
+    fugitivos = fugitivosDelEncuentro,
+  ) {
+    const posicionOriginal = Math.max(1, Math.min(3, enemigo.posicionFormacion ?? 1));
+    const rangosActivos = [...new Set(enemigos
+      .filter((candidato) => estaVivoCombatiente(candidato) && !fugitivos.has(candidato))
+      .map((candidato) => Math.max(1, Math.min(3, candidato.posicionFormacion ?? 1))))]
+      .sort((a, b) => a - b);
+    const indiceRango = rangosActivos.indexOf(posicionOriginal);
+    return indiceRango < 0 ? posicionOriginal : indiceRango + 1;
+  }
+
+  function actualizarFormacionVisualEnemigos() {
+    const tarjetas = [...encounterEnemies.querySelectorAll("[data-enemy-id]")];
+    tarjetas.forEach((tarjeta) => {
+      const enemigo = enemigosDelEncuentro.find((candidato) => candidato.id === tarjeta.dataset.enemyId);
+      if (!enemigo || !estaVivoCombatiente(enemigo) || fugitivosDelEncuentro.has(enemigo)) return;
+      const posicion = obtenerPosicionFormacionEnemigo(enemigo);
+      tarjeta.dataset.formationPosition = String(posicion);
+      const etiqueta = tarjeta.querySelector(".encounter-enemy-formation");
+      if (etiqueta) etiqueta.textContent = ["", "Frente", "Centro", "Retaguardia"][posicion];
+    });
+
+    tarjetas.sort((a, b) => {
+      const enemigoA = enemigosDelEncuentro.find((candidato) => candidato.id === a.dataset.enemyId);
+      const enemigoB = enemigosDelEncuentro.find((candidato) => candidato.id === b.dataset.enemyId);
+      const estadoA = !enemigoA || !estaVivoCombatiente(enemigoA) ? 2
+        : fugitivosDelEncuentro.has(enemigoA) ? 1 : 0;
+      const estadoB = !enemigoB || !estaVivoCombatiente(enemigoB) ? 2
+        : fugitivosDelEncuentro.has(enemigoB) ? 1 : 0;
+      return estadoA - estadoB
+        || Number(a.dataset.formationPosition) - Number(b.dataset.formationPosition);
+    });
+    tarjetas.forEach((tarjeta) => encounterEnemies.append(tarjeta));
+  }
+
+  function extraerBotinPonderado(disponibles) {
+    const pesoTotal = disponibles.reduce((total, item) => total + (item.pesoBotin ?? 1), 0);
+    let tirada = Math.random() * pesoTotal;
+    const indice = disponibles.findIndex((item) => {
+      tirada -= item.pesoBotin ?? 1;
+      return tirada < 0;
+    });
+    return disponibles.splice(indice < 0 ? disponibles.length - 1 : indice, 1)[0];
   }
 
   function calcularTablaBotin(enemigos) {
@@ -218,17 +479,49 @@
     const nivelGrupo = Math.max(1, Math.round(
       enemigos.reduce((total, enemigo) => total + enemigo.nivel, 0) / enemigos.length,
     ));
-    const nivelMaximoBotin = nivelGrupo + (enemigos.length >= 3 ? 1 : 0);
+    const nivelBotinPorEncuentro = nivelGrupo + (enemigos.length >= 3 ? 1 : 0);
+    const nivelMaximoConfigurado = Number(
+      juego.configuracionPorMapa?.[juego.mapaActivoId]?.nivelMaximoLoot,
+    );
+    const nivelMaximoBotin = Number.isFinite(nivelMaximoConfigurado) && nivelMaximoConfigurado >= 1
+      ? Math.min(nivelBotinPorEncuentro, nivelMaximoConfigurado)
+      : nivelBotinPorEncuentro;
+    const rangos = juego.rangosEquipo ?? [];
+    const rangoMaximoBotin = juego.configuracionPorMapa?.[juego.mapaActivoId]?.rangoMaximoLoot
+      ?? juego.obtenerRangoEquipo?.(nivelMaximoBotin)
+      ?? "basico";
+    const indiceConfigurado = rangos.findIndex((rango) => rango.id === rangoMaximoBotin);
+    const indiceRangoPermitido = indiceConfigurado >= 0 ? indiceConfigurado : rangos.length - 1;
+    const itemDentroDelRango = (item) => {
+      const indiceRangoItem = rangos.findIndex((rango) => rango.id === item.rango);
+      return item.nivel <= nivelMaximoBotin
+        && (indiceRangoItem < 0 || indiceRangoItem <= indiceRangoPermitido);
+    };
     const cantidadOpciones = enemigos.length >= 4 ? 3 : enemigos.length >= 2 ? 2 : 1;
+    const idsBotinGarantizado = enemigos.flatMap((enemigo) => [
+      enemigo.botinGarantizadoId,
+      ...(enemigo.botinGarantizadoIds ?? []),
+    ]).filter(Boolean);
+    const botinGarantizado = [...new Set(idsBotinGarantizado)]
+      .map((id) => (juego.itemsBase ?? []).find((item) => item.id === id))
+      .filter((item) => item && itemDentroDelRango(item));
+    const idsGarantizados = new Set(botinGarantizado.map((item) => item.id));
     const candidatos = (juego.itemsBase ?? []).filter((item) =>
-      !item.esObjetoMision && item.nivel <= nivelMaximoBotin);
+      !item.esObjetoMision && !idsGarantizados.has(item.id) && itemDentroDelRango(item));
     const disponibles = [...candidatos];
     const recompensas = [];
     while (recompensas.length < cantidadOpciones && disponibles.length > 0) {
-      const index = Math.floor(Math.random() * disponibles.length);
-      recompensas.push(disponibles.splice(index, 1)[0]);
+      recompensas.push(extraerBotinPonderado(disponibles));
     }
-    return recompensas.map(crearInstanciaBotin);
+    const llaveCofre = (juego.itemsBase ?? []).find((item) => item.id === "llave-cofre");
+    const llaveCofreSoltada = llaveCofre
+      && !idsBotinGarantizado.includes("llave-cofre")
+      && enemigos.some(() => Math.random() < 0.08);
+    return [
+      ...botinGarantizado.map((item) => crearInstanciaBotin(item, false)),
+      ...recompensas.map((item) => crearInstanciaBotin(item)),
+      ...(llaveCofreSoltada ? [crearInstanciaBotin(llaveCofre, false)] : []),
+    ];
   }
 
   function renderizarBotin(enemigos) {
@@ -266,7 +559,7 @@
       const estadoBotin = ["arma", "armadura"].includes(item.categoria)
         ? ` · ${item.etiquetaEstado} (${Math.round(item.eficaciaEstado * 100)} %)`
         : "";
-      details.textContent = `${item.categoria} · nivel ${item.nivel}${estadoBotin}`;
+      details.textContent = `${item.categoria} · ${item.rango} · nivel ${item.nivel}${estadoBotin}`;
       const takeButton = document.createElement("button");
       takeButton.className = "loot-take-button";
       takeButton.type = "button";
@@ -370,6 +663,7 @@
   }
 
   function marcarTurnoActual(personaje) {
+    personajeEnTurno = personaje;
     playerBar.querySelectorAll(".player-card.is-current-turn").forEach((card) => {
       card.classList.remove("is-current-turn");
     });
@@ -399,31 +693,51 @@
   }
 
   function crearEnemigoParaEncuentro(base, numeroEncuentro, posicion) {
-    return new Enemigo({
+    const enemigo = new Enemigo({
       id: `${base.id}-encuentro-${numeroEncuentro}-${posicion}`,
       nombre: base.nombre,
       tipo: base.tipo,
       imagen: base.imagen,
       nivel: base.nivel,
+      rango: base.rango,
       vidaMaxima: base.vida.maxima,
       corduraMaxima: base.cordura.maxima,
       poderMaximo: base.poder.maximo,
       ataqueBase: base.ataqueBase,
       resistenciaBase: base.resistenciaBase,
+      resistenciaMagica: base.resistenciaMagica,
       agilidad: base.agilidad,
       bonificacionCritico: base.bonificacionCritico,
       maldito: base.maldito,
       danioCorduraPorGolpe: base.danioCorduraPorGolpe,
       danioMoralPorGolpe: base.danioMoralPorGolpe,
       efectoGolpe: base.efectoGolpe ? { ...base.efectoGolpe } : null,
+      ataques: base.ataques.map((ataque) => ({ ...ataque })),
+      esJefe: base.esJefe,
+      botinGarantizadoId: base.botinGarantizadoId,
+      botinGarantizadoIds: [...(base.botinGarantizadoIds ?? [])],
       equipo: { ...base.equipo },
       descripcion: base.descripcion,
     });
+    // Los POI conservan las instancias del combate anterior si el grupo tuvo que retirarse.
+    enemigo.vida.actual = Math.max(0, Math.min(enemigo.vida.maxima, base.vida.actual));
+    enemigo.estabilidadMental.actual = Math.max(
+      0,
+      Math.min(enemigo.estabilidadMental.maxima, base.estabilidadMental.actual),
+    );
+    enemigo.poder.actual = Math.max(0, Math.min(enemigo.poder.maximo, base.poder.actual));
+    return enemigo;
   }
   function obtenerCostePoder(personaje, arma, perfil) {
     const pasivaCaballero = personaje.id === "caballero-maldito";
     const pasivaBruja = personaje.id === "bruja" && arma.magico && perfil.efecto !== "curacion";
     return pasivaCaballero || pasivaBruja ? Math.ceil(perfil.costePoder / 2) : perfil.costePoder;
+  }
+
+  function personajePuedeUsarPerfilAtaque(personaje, arma, perfil) {
+    const clase = personaje.clase.toLowerCase();
+    return ["bruja", "sacerdote"].includes(clase)
+      || (!arma?.magico && perfil?.tipoDanio !== "magico");
   }
 
   function calcularIniciativa(combatiente) {
@@ -435,15 +749,16 @@
   }
 
   function prepararIniciativa(grupo, enemigos) {
-    const lider = grupo.find(estaVivoCombatiente) ?? grupo[0];
-    const enemigoEnPunta = enemigos[0];
+    const lider = grupo.filter(estaVivoCombatiente).sort((a, b) => b.agilidadCombate - a.agilidadCombate)[0] ?? grupo[0];
+    const enemigoEnPunta = enemigos.find(estaVivoCombatiente);
+    if (!enemigoEnPunta) return true;
     const iniciativaGrupo = calcularIniciativa(lider);
     const iniciativaEnemigo = calcularIniciativa(enemigoEnPunta);
     const enemigosEmboscan = emboscadaEnemigaForzada;
     const grupoPrimero = !enemigosEmboscan && iniciativaGrupo.total >= iniciativaEnemigo.total;
     emboscadaEnemigaForzada = false;
-    const asesinoAlFrente = grupo[0]?.id === "asesino" && estaVivoCombatiente(grupo[0]);
-    emboscadaPendiente = grupoPrimero && asesinoAlFrente;
+    const asesinoActivo = grupo.some((personaje) => personaje.id === "asesino" && estaVivoCombatiente(personaje));
+    emboscadaPendiente = grupoPrimero && asesinoActivo;
     sePuedeIntentarHuir = emboscadaPendiente;
     if (fleeButton instanceof HTMLButtonElement) {
       fleeButton.hidden = !sePuedeIntentarHuir;
@@ -454,7 +769,7 @@
       + `${grupoPrimero ? "El grupo toma la iniciativa." : `${enemigoEnPunta.nombre} toma la iniciativa.`}`,
     );
     if (emboscadaPendiente) {
-      registrarSuceso("El Asesino lidera la emboscada: el primer golpe conectado del grupo será crítico.");
+      registrarSuceso("La presencia del Asesino permite la emboscada: el primer golpe conectado será crítico.");
     }
     if (enemigosEmboscan) {
       registrarSuceso("Los enemigos emboscan al grupo por la espalda y atacan primero.");
@@ -515,6 +830,7 @@
           registrarSuceso(`${objetivo.nombre} muere por ${efecto.tipo === "veneno" ? "el veneno" : "las quemaduras"}.`);
           if (objetivo instanceof Enemigo) {
             restaurarCorduraPorEnemigoDerrotado(objetivo);
+            actualizarFormacionVisualEnemigos();
           } else {
             await mostrarMuertePersonaje(objetivo);
           }
@@ -533,13 +849,29 @@
 
   async function mostrarMuertePersonaje(personaje) {
     juego.actualizarRecursosTarjeta(personaje.id);
-    juego.actualizarBonificacionesFormacion?.();
+    juego.actualizarBonificacionesGrupales?.();
     window.setTimeout(() => juego.sonidos?.reproducir("muerteAliado"), 160);
     characterDeathDescription.textContent = `${personaje.nombre} ha muerto.`;
     if (!characterDeathDialog.open) characterDeathDialog.showModal();
     await new Promise((resolve) => {
       characterDeathDialog.addEventListener("close", resolve, { once: true });
     });
+  }
+
+  async function recibirDanioExploracion(personaje, danioBase, origen = "una trampa") {
+    if (!juego.personajes.includes(personaje) || !estaVivoCombatiente(personaje)) return false;
+    const resistencia = personaje.resistenciaFisicaCombate ?? personaje.resistenciaFisica ?? 0;
+    const vidaAntes = personaje.vida.actual;
+    const danioCalculado = Math.max(1, Math.floor(Number(danioBase) - resistencia));
+    const danio = Math.min(danioCalculado, Math.max(0, vidaAntes - 5));
+    personaje.vida.actual = vidaAntes - danio;
+    juego.actualizarRecursosTarjeta(personaje.id);
+    if (danio > 0) {
+      registrarSuceso(`${origen} hiere a ${personaje.nombre} y le quita ${danio} puntos de vida (${personaje.vida.actual}/${personaje.vida.maxima} PV).`);
+    } else {
+      registrarSuceso(`${origen} alcanza a ${personaje.nombre}, que consigue resistir con ${personaje.vida.actual} PV.`);
+    }
+    return true;
   }
 
   function restaurarCorduraPorEnemigoDerrotado(enemigo) {
@@ -565,61 +897,58 @@
   }
 
   function obtenerAlcanceAtaque(combatiente) {
-    return combatiente.equipo?.arma?.alcance ?? 1;
+    return Math.min(3, combatiente.equipo?.arma?.alcance ?? 1);
   }
 
   function obtenerDeterioroMental(combatiente) {
+    if (combatiente instanceof Enemigo && combatiente.esJefe) return 0;
     return 100 * (1 - combatiente.estabilidadMental.actual / combatiente.estabilidadMental.maxima);
   }
 
-  function obtenerFormacionActiva(grupo, fugitivos) {
+  function obtenerAliadosActivos(grupo, fugitivos) {
     return grupo.filter((personaje) => estaVivoCombatiente(personaje) && !fugitivos.has(personaje));
   }
 
-  function actualizarFormacionTrasHuida(personaje, grupo) {
-    const indice = grupo.indexOf(personaje);
-    if (indice < 0) return;
-    grupo.splice(indice, 1);
-    grupo.push(personaje);
-    const tarjeta = playerBar.querySelector(`[data-character-id="${personaje.id}"]`);
-    if (tarjeta instanceof HTMLElement) playerBar.append(tarjeta);
+  function actualizarEstadoTrasHuida(personaje) {
     juego.actualizarRecursosTarjeta(personaje.id);
-    juego.actualizarControlesFormacion?.();
-    juego.actualizarBonificacionesFormacion?.();
   }
 
-  function actualizarFormacionTrasResurreccion(personaje, grupo, participantes = null, danioPorPersonaje = null) {
-    const indice = grupo.indexOf(personaje);
-    if (indice >= 0) {
-      grupo.splice(indice, 1);
-    }
-    grupo.push(personaje);
+  function registrarResurreccionEnEncuentro(personaje, grupo, participantes = null, danioPorPersonaje = null) {
+    if (!grupo.includes(personaje)) grupo.push(personaje);
     if (participantes && !participantes.includes(personaje)) participantes.push(personaje);
     if (danioPorPersonaje && !danioPorPersonaje.has(personaje.id)) danioPorPersonaje.set(personaje.id, 0);
-    juego.actualizarControlesFormacion?.();
-    juego.actualizarBonificacionesFormacion?.();
+    juego.actualizarBonificacionesGrupales?.();
   }
 
   function evaluarInicioTurno(combatiente, fugitivos, grupo = null) {
     const deterioro = obtenerDeterioroMental(combatiente);
     if (deterioro >= 50) {
-      const probabilidadHuida = Math.min(60, 10 + Math.floor((deterioro - 50) / 10) * 10);
-      if (Math.random() * 100 < probabilidadHuida) {
-        fugitivos.add(combatiente);
-        if (combatiente instanceof Enemigo) {
-          actualizarEstadoEnemigoPanel(combatiente, fugitivos);
+      if (combatiente instanceof Enemigo) {
+        const probabilidadMiedo = Math.min(70, 50 + Math.floor((deterioro - 50) / 10) * 5);
+        if (Math.random() * 100 < probabilidadMiedo) {
+          registrarSuceso(`${combatiente.nombre} queda paralizado por el miedo y pierde su turno (${probabilidadMiedo} %).`);
+          return false;
         }
-        if (combatiente instanceof juego.Personaje && Array.isArray(grupo)) {
-          actualizarFormacionTrasHuida(combatiente, grupo);
-          registrarSuceso(`${combatiente.nombre} se retira a la retaguardia; el resto del grupo avanza.`);
+      } else {
+        const probabilidadHuida = Math.min(60, 10 + Math.floor((deterioro - 50) / 10) * 10);
+        if (Math.random() * 100 < probabilidadHuida) {
+          fugitivos.add(combatiente);
+          if (combatiente instanceof Enemigo) {
+            actualizarEstadoEnemigoPanel(combatiente, fugitivos);
+            actualizarFormacionVisualEnemigos();
+          }
+          if (combatiente instanceof juego.Personaje && Array.isArray(grupo)) {
+            actualizarEstadoTrasHuida(combatiente);
+            registrarSuceso(`${combatiente.nombre} abandona el combate; el resto del grupo continúa.`);
+          }
+          registrarSuceso(
+            `${combatiente.nombre} huye del combate (probabilidad de huida: ${probabilidadHuida} %).`,
+          );
+          return false;
         }
-        registrarSuceso(
-          `${combatiente.nombre} huye del combate (probabilidad de huida: ${probabilidadHuida} %).`,
-        );
-        return false;
       }
     } else if (deterioro >= 30 && Math.random() < 0.5) {
-      registrarSuceso(`${combatiente.nombre} pierde su turno por el deterioro de su moral o cordura.`);
+      registrarSuceso(`${combatiente.nombre} se paraliza por el miedo y pierde su turno.`);
       return false;
     } else if (deterioro >= 10 && Math.random() < 0.25) {
       registrarSuceso(`${combatiente.nombre} pierde su turno por el deterioro de su moral o cordura.`);
@@ -630,31 +959,40 @@
 
   function puedeErrarAtaque(combatiente) {
     const deterioro = obtenerDeterioroMental(combatiente);
-    return deterioro >= 10 && Math.random() < 0.1;
+    if (deterioro < 10) return false;
+    const probabilidadFallo = Math.min(0.5, 0.1 + Math.floor((deterioro - 10) / 20) * 0.1);
+    return Math.random() < probabilidadFallo;
   }
 
-  function crearOpcionAtaque(tipo, texto, objetivoId = null, deshabilitado = false) {
+  function crearOpcionAtaque(tipo, texto, objetivoId = null, deshabilitado = false, hechizoId = null) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.attackType = tipo;
     if (objetivoId) {
       button.dataset.targetId = objetivoId;
     }
+    if (hechizoId) button.dataset.spellId = hechizoId;
     button.textContent = texto;
     button.disabled = deshabilitado;
     actionOptions.append(button);
   }
 
-  function obtenerObjetivosEnRango(atacante, grupo, enemigos, fugitivos) {
-    const alcance = obtenerAlcanceAtaque(atacante);
-    const formacionActiva = obtenerFormacionActiva(grupo, fugitivos);
+  function obtenerObjetivosEnRango(atacante, grupo, enemigos, fugitivos, alcance = obtenerAlcanceAtaque(atacante)) {
+    const aliadosActivos = obtenerAliadosActivos(grupo, fugitivos);
     if (atacante instanceof juego.Personaje) {
-      const rango = formacionActiva.indexOf(atacante) + 1;
-      return rango <= alcance
-        ? enemigos.filter((enemigo) => estaVivoCombatiente(enemigo) && !fugitivos.has(enemigo))
-        : [];
+      const alcanceEnemigo = Math.min(3, alcance);
+      return enemigos.filter((enemigo) => estaVivoCombatiente(enemigo)
+        && !fugitivos.has(enemigo)
+        && obtenerPosicionFormacionEnemigo(enemigo, enemigos, fugitivos) <= alcanceEnemigo);
     }
-    return formacionActiva.filter((personaje, index) => index + 1 <= alcance);
+    return aliadosActivos;
+  }
+
+  function obtenerPenalizacionFalloPorDistancia(atacante, objetivo) {
+    if (!(atacante instanceof juego.Personaje)) return 0;
+    const posicion = obtenerPosicionFormacionEnemigo(objetivo) - 1;
+    if (posicion <= 0) return 0;
+    return Math.min(PENALIZACION_FALLO_DISTANCIA_MAXIMA, posicion * PENALIZACION_FALLO_POR_POSICION);
   }
 
   function crearOpcionEquipo(personaje) {
@@ -667,8 +1005,47 @@
       button.type = "button";
       button.dataset.attackType = "equipar";
       button.dataset.inventorySlot = String(index + 1);
-      button.textContent = `Equiparse: ${item.nombre} · consume el turno`;
+      button.textContent = `Equipar → ${item.nombre}`;
       actionOptions.append(button);
+    });
+  }
+
+  function objetivoPuedeRecibirHechizo(objetivo, hechizo) {
+    if (!estaVivoCombatiente(objetivo) || fugitivosDelEncuentro.has(objetivo)) return false;
+    if (hechizo.efecto === "curacion") return objetivo.vida.actual < objetivo.vida.maxima;
+    if (hechizo.efecto === "cordura") return objetivo.cordura.actual < objetivo.cordura.maxima;
+    const proteccionActual = proteccionesMagicas.get(objetivo.id)?.porcentaje ?? 0;
+    return proteccionActual < hechizo.porcentaje;
+  }
+
+  function objetivosHechizoRestauracion(hechizo) {
+    const aliados = grupoDelEncuentro.filter((objetivo) => estaVivoCombatiente(objetivo)
+      && !fugitivosDelEncuentro.has(objetivo));
+    return hechizo.objetivo === "grupo"
+      ? (aliados.some((objetivo) => objetivoPuedeRecibirHechizo(objetivo, hechizo)) ? aliados : [])
+      : aliados.filter((objetivo) => objetivoPuedeRecibirHechizo(objetivo, hechizo));
+  }
+
+  function crearOpcionesHechizosRestauracion(personaje, arma) {
+    arma.hechizosRestauracion.forEach((hechizo) => {
+      const objetivos = objetivosHechizoRestauracion(hechizo);
+      if (objetivos.length === 0) return;
+      const costePA = costePuntosAccion("hechizoRestauracion", arma, hechizo);
+      const deshabilitado = personaje.puntosAccionTurno < costePA || personaje.poder.actual < hechizo.costePoder;
+      const resultado = hechizo.efecto === "curacion" ? `Cura ${hechizo.curacion} PV`
+        : hechizo.efecto === "cordura" ? `Restaura ${hechizo.restauracion} Cordura`
+          : `Mitiga ${Math.round(hechizo.porcentaje * 100)} %`;
+      if (hechizo.objetivo === "grupo") {
+        crearOpcionAtaque("hechizoRestauracion", `${hechizo.nombre} → Grupo · ${resultado} · ${costePA} PA · Poder ${hechizo.costePoder}`, null, deshabilitado, hechizo.id);
+      } else {
+        objetivos.forEach((objetivo) => crearOpcionAtaque(
+          "hechizoRestauracion",
+          `${hechizo.nombre} → ${objetivo.nombre} · ${resultado} · ${costePA} PA · Poder ${hechizo.costePoder}`,
+          objetivo.id,
+          deshabilitado,
+          hechizo.id,
+        ));
+      }
     });
   }
 
@@ -696,60 +1073,117 @@
       return;
     }
     actionTitle.textContent = `Turno de ${personaje.nombre}`;
-    actionStatus.textContent = `Poder: ${personaje.poder.actual}/${personaje.poder.maximo}`;
+    actionStatus.textContent = `PA: ${personaje.puntosAccionTurno}/${personaje.puntosAccionMaximos} · Poder: ${personaje.poder.actual}/${personaje.poder.maximo}`;
     actionOptions.replaceChildren();
-    objetivosDelTurno.forEach((objetivo) => {
-      crearOpcionAtaque("basico", `Puñetazo → ${objetivo.nombre} · sin coste`, objetivo.id);
+    const objetivosBasicos = obtenerObjetivosEnRango(
+      personaje,
+      grupoDelEncuentro,
+      enemigosDelEncuentro,
+      fugitivosDelEncuentro,
+      obtenerAlcanceAtaque(personaje),
+    );
+    objetivosBasicos.forEach((objetivo) => {
+      const nombreBasico = personaje.equipo.arma ? "Ataque básico" : "Puñetazo";
+      const costeBasico = costePuntosAccion("basico", personaje.equipo.arma);
+      crearOpcionAtaque("basico", `${nombreBasico} → ${objetivo.nombre} · ${costeBasico} PA`, objetivo.id,
+        personaje.puntosAccionTurno < costeBasico);
     });
 
     const arma = personaje.equipo.arma;
     if (arma) {
+      if (arma.hechizosRestauracion?.length) {
+        crearOpcionesHechizosRestauracion(personaje, arma);
+      } else {
       const dirigido = arma.ataquesEspeciales.dirigido;
       const area = arma.ataquesEspeciales.area;
       const costeDirigido = obtenerCostePoder(personaje, arma, dirigido);
       const costeArea = obtenerCostePoder(personaje, arma, area);
-      const objetivosDirigidos = dirigido.efecto === "curacion"
+      const resumenPoder = (perfil) => {
+        const partes = [];
+        const drenaje = (perfil.danioPoder ?? 0) + (arma.danioPoder ?? 0);
+        if (drenaje > 0) partes.push(`quita ${drenaje} poder`);
+        if (perfil.absorcionPoder > 0) partes.push(`absorbe hasta ${perfil.absorcionPoder}`);
+        return partes.length ? ` · ${partes.join(", ")}` : "";
+      };
+      const objetivosDirigidos = !personajePuedeUsarPerfilAtaque(personaje, arma, dirigido)
+        ? []
+        : dirigido.efecto === "curacion"
         ? grupoDelEncuentro.filter((objetivo) => estaVivoCombatiente(objetivo)
           && objetivo.vida.actual < objetivo.vida.maxima
           && !fugitivosDelEncuentro.has(objetivo))
-        : objetivosDelTurno;
+        : obtenerObjetivosEnRango(
+          personaje,
+          grupoDelEncuentro,
+          enemigosDelEncuentro,
+          fugitivosDelEncuentro,
+          dirigido.alcance ?? arma.alcance,
+        );
       objetivosDirigidos.forEach((objetivo) => {
         crearOpcionAtaque(
           "dirigido",
-          `${dirigido.nombre} → ${objetivo.nombre} · ${dirigido.efecto === "curacion" ? `cura ${dirigido.curacion} · ` : ""}${costeDirigido} poder`,
+          `${dirigido.nombre} → ${objetivo.nombre} · ${costePuntosAccion("dirigido", arma)} PA · Poder ${costeDirigido}${resumenPoder(dirigido)}`,
           objetivo.id,
-          personaje.poder.actual < costeDirigido,
+          personaje.poder.actual < costeDirigido || personaje.puntosAccionTurno < costePuntosAccion("dirigido", arma),
         );
       });
-      const hayObjetivosArea = area.efecto === "curacion"
+      const hayObjetivosArea = !personajePuedeUsarPerfilAtaque(personaje, arma, area)
+        ? false
+        : area.efecto === "curacion"
         ? grupoDelEncuentro.some((objetivo) => estaVivoCombatiente(objetivo)
           && objetivo.vida.actual < objetivo.vida.maxima
           && !fugitivosDelEncuentro.has(objetivo))
-        : objetivosDelTurno.length > 0;
+        : obtenerObjetivosEnRango(
+          personaje,
+          grupoDelEncuentro,
+          enemigosDelEncuentro,
+          fugitivosDelEncuentro,
+          area.alcance ?? arma.alcance,
+        ).length > 0;
       if (hayObjetivosArea) {
         crearOpcionAtaque(
           "area",
-          `${area.nombre} → ${area.efecto === "curacion" ? `grupo · cura ${area.curacion}` : `hasta ${area.objetivosMaximos} objetivos`} · ${costeArea} poder`,
+          `${area.nombre} → ${area.efecto === "curacion" ? "Grupo aliado" : "Enemigos"} · ${costePuntosAccion("area", arma)} PA · Poder ${costeArea}${resumenPoder(area)}`,
           null,
-          personaje.poder.actual < costeArea,
+          personaje.poder.actual < costeArea || personaje.puntosAccionTurno < costePuntosAccion("area", arma),
         );
+      }
       }
     }
 
     crearOpcionEquipo(personaje);
     crearOpcionesPocionResurreccion();
+    const habilidadEspecial = obtenerDescripcionHabilidadEspecial(personaje);
+    if (habilidadEspecial) {
+      const agotada = personaje.habilidadEspecialAgotada;
+      crearOpcionAtaque(
+        "habilidad",
+        agotada ? `${habilidadEspecial.nombre} · Agotada (se recarga al descansar)` : `${habilidadEspecial.nombre} · ${habilidadEspecial.descripcion} · Consume el turno`,
+        null,
+        agotada || !puedeActivarHabilidadEspecial(personaje),
+      );
+    }
+    [...actionOptions.querySelectorAll('[data-attack-type="equipar"], [data-attack-type="revivir"]')]
+      .forEach((button) => {
+        const coste = costePuntosAccion(button.dataset.attackType, personaje.equipo.arma);
+        button.disabled = personaje.puntosAccionTurno < coste;
+        if (button.dataset.attackType === "equipar") button.textContent += " · 2 PA";
+        if (button.dataset.attackType === "revivir") button.textContent += " · 1 PA";
+      });
+    crearOpcionAtaque("cubrirse", "Cubrirse · 1 PA", null,
+      personaje.puntosAccionTurno < costePuntosAccion("cubrirse"));
 
     if (objetivosDelTurno.length === 0 && !grupoDelEncuentro.some((objetivo) => estaVivoCombatiente(objetivo))) {
       actionStatus.textContent = "No hay enemigos al alcance. Puedes usar otra habilidad cuando esté disponible o pasar el turno.";
     }
-    crearOpcionAtaque("saltar", "Pasar turno");
+    crearOpcionAtaque("saltar", "Terminar turno");
     actionDialog.showModal();
   }
 
-  function esperarAccionDelJugador(personaje, objetivosDisponibles, grupo) {
+  function esperarAccionDelJugador(personaje, objetivosDisponibles, grupo, enemigos) {
     personajeEnTurno = personaje;
     objetivosDelTurno = objetivosDisponibles;
     grupoDelEncuentro = grupo;
+    enemigosDelEncuentro = enemigos;
     marcarTurnoActual(personaje);
     return new Promise((resolve) => {
       resolverAccionTurno = resolve;
@@ -757,21 +1191,36 @@
   }
 
   function obtenerEstadoConsumible(item) {
-    const esGrimorio = item.tipo.toLowerCase() === "grimorio";
     const esRevivir = Boolean(item.revivir);
-    const esAplicacionArma = Boolean(item.efectoEstado);
     if (!combatInProgress) {
-      return { enCurso: false, disponible: true, esGrimorio, esRevivir, esAplicacionArma, personajeEnTurno: null };
+      return { enCurso: false, disponible: true, esRevivir, personajeEnTurno: null };
     }
-    if (!personajeEnTurno || !resolverAccionTurno) {
+    const puedeUsarseDuranteCombateAutomatico = juego.combateAutomatico && combatInProgress;
+    if (!personajeEnTurno || (!resolverAccionTurno && !puedeUsarseDuranteCombateAutomatico)) {
       return {
         enCurso: true,
         disponible: false,
-        esGrimorio,
         esRevivir,
-        esAplicacionArma,
         personajeEnTurno: null,
         motivo: "Los consumibles solo se pueden usar durante el turno de un personaje.",
+      };
+    }
+    if (!esRevivir && consumiblesUsadosEsteTurno.has(personajeEnTurno.id)) {
+      return {
+        enCurso: true,
+        disponible: false,
+        esRevivir,
+        personajeEnTurno,
+        motivo: `${personajeEnTurno.nombre} ya usó una poción durante este turno.`,
+      };
+    }
+    if (personajeEnTurno.puntosAccionTurno < (item.revivir ? costePuntosAccion("revivir") : costePuntosAccion("consumible"))) {
+      return {
+        enCurso: true,
+        disponible: false,
+        esRevivir,
+        personajeEnTurno,
+        motivo: "No quedan puntos de acción para usar un objeto.",
       };
     }
 
@@ -783,9 +1232,7 @@
       return {
         enCurso: true,
         disponible: false,
-        esGrimorio,
         esRevivir,
-        esAplicacionArma,
         personajeEnTurno,
         motivo: item.magico
           ? "Este objeto mágico solo puede ser usado por la Bruja o el Sacerdote."
@@ -793,19 +1240,7 @@
       };
     }
 
-    if (esAplicacionArma && !juego.equipo?.puedeAplicarEfectoArma(personajeEnTurno, item)) {
-      return {
-        enCurso: true,
-        disponible: false,
-        esGrimorio,
-        esRevivir,
-        esAplicacionArma,
-        personajeEnTurno,
-        motivo: "Necesitas un arma convencional equipada y sin otro efecto preparado.",
-      };
-    }
-
-    return { enCurso: true, disponible: true, esGrimorio, esRevivir, esAplicacionArma, personajeEnTurno };
+    return { enCurso: true, disponible: true, esRevivir, personajeEnTurno };
   }
 
   function usarConsumibleEnTurno(numeroEspacio, objetivoId) {
@@ -814,13 +1249,17 @@
       || numeroEspacio < 1 || numeroEspacio > objetosInventario.length) {
       throw new RangeError("El espacio del inventario seleccionado no es válido.");
     }
-    if (!combatInProgress || !personajeEnTurno || !resolverAccionTurno) {
+    const consumoDirectoAutomatico = juego.combateAutomatico && combatInProgress && !resolverAccionTurno;
+    if (!combatInProgress || !personajeEnTurno || (!resolverAccionTurno && !consumoDirectoAutomatico)) {
       throw new Error("No hay un turno de personaje activo para usar un consumible.");
     }
 
     const item = objetosInventario[numeroEspacio - 1];
     if (!item || item.categoria !== "consumible") {
       throw new TypeError("El objeto seleccionado ya no es un consumible.");
+    }
+    if (!item.revivir && consumiblesUsadosEsteTurno.has(personajeEnTurno.id)) {
+      throw new Error(`${personajeEnTurno.nombre} ya usó una poción durante este turno.`);
     }
     const estado = obtenerEstadoConsumible(item);
     if (!estado.disponible) {
@@ -832,8 +1271,10 @@
       || (!item.revivir && fugitivosDelEncuentro.has(objetivo))) {
       throw new Error("El objetivo del consumible no está disponible para combatir.");
     }
-    if (!estado.esGrimorio && !estado.esRevivir && objetivo !== personajeEnTurno) {
-      throw new Error("Los consumibles comunes solo pueden aplicarse al personaje en turno.");
+    const costePA = item.revivir ? costePuntosAccion("revivir")
+      : objetivo === personajeEnTurno ? costePuntosAccion("consumible") : 3;
+    if (personajeEnTurno.puntosAccionTurno < costePA) {
+      throw new Error(`Se necesitan ${costePA} PA para usar ${item.nombre} sobre ${objetivo.nombre}.`);
     }
 
     const itemUsado = juego.equipo.usarConsumible(
@@ -841,16 +1282,30 @@
       objetivo.id,
       personajeEnTurno.id,
     );
-    if (item.revivir) actualizarFormacionTrasResurreccion(objetivo, grupoDelEncuentro);
+    if (!item.revivir) consumiblesUsadosEsteTurno.add(personajeEnTurno.id);
+    if (item.revivir) {
+      registrarResurreccionEnEncuentro(
+        objetivo,
+        grupoDelEncuentro,
+        participantesEncuentro,
+        danioPorPersonajeEncuentro,
+      );
+    }
     const eleccion = {
       tipo: "consumible",
       item: itemUsado,
       objetivo,
       usuario: personajeEnTurno,
+      costePA,
     };
     const resolver = resolverAccionTurno;
     resolverAccionTurno = null;
-    resolver(eleccion);
+    if (resolver) {
+      resolver(eleccion);
+    } else {
+      personajeEnTurno.puntosAccionTurno -= costePA;
+      juego.actualizarRecursosTarjeta(personajeEnTurno.id);
+    }
   }
 
   playerBar.addEventListener("click", (event) => {
@@ -871,39 +1326,42 @@
     event.stopImmediatePropagation();
   }, true);
 
-  function elegirAtaqueEnemigo(enemigo, cantidadObjetivos) {
-    const ataquesDisponibles = [{ tipo: "basico", perfil: null }];
+  function elegirAtaqueEnemigo(enemigo, grupo, enemigos, fugitivos) {
     const arma = enemigo.equipo.arma;
-    if (arma) {
-      ["dirigido", "area"].forEach((tipo) => {
-        const perfil = arma.ataquesEspeciales[tipo];
-        if (enemigo.poder.actual >= perfil.costePoder) {
-          ataquesDisponibles.push({ tipo, perfil });
-        }
-      });
-    }
+    const perfiles = enemigo.ataques.length > 0
+      ? enemigo.ataques.map((perfil) => ({ tipo: "especial-enemigo", perfil }))
+      : [
+        { tipo: "basico", perfil: null },
+        ...(arma ? ["dirigido", "area"].map((tipo) => ({ tipo, perfil: arma.ataquesEspeciales[tipo] })) : []),
+      ];
+    const ataquesDisponibles = perfiles.flatMap(({ tipo, perfil }) => {
+      const alcance = perfil?.alcance ?? arma?.alcance ?? 1;
+      const objetivos = obtenerObjetivosEnRango(enemigo, grupo, enemigos, fugitivos, alcance);
+      if (objetivos.length === 0 || enemigo.poder.actual < (perfil?.costePoder ?? 0)) return [];
+      return [{ tipo, perfil, objetivos }];
+    });
+    if (ataquesDisponibles.length === 0) return null;
 
-    const tipoPreferido = cantidadObjetivos >= 2 && ataquesDisponibles.some(({ tipo }) => tipo === "area")
+    const tipoPreferido = ataquesDisponibles.some(({ tipo, objetivos, perfil }) =>
+      tipo === "area" && objetivos.length >= 2 && perfil.efecto !== "curacion")
       ? "area"
       : ataquesDisponibles.some(({ tipo }) => tipo === "dirigido")
         ? "dirigido"
-        : "basico";
+        : null;
     const deterioro = obtenerDeterioroMental(enemigo);
     const probabilidadMalaDecision = deterioro >= 50 ? 0.75
       : deterioro >= 30 ? 0.5
         : deterioro >= 10 ? 0.25
           : 0;
-    if (ataquesDisponibles.length > 1 && Math.random() < probabilidadMalaDecision) {
+    if (tipoPreferido && Math.random() >= probabilidadMalaDecision) {
+      return ataquesDisponibles.find(({ tipo }) => tipo === tipoPreferido);
+    }
+    if (ataquesDisponibles.length > 1) {
       const alternativas = ataquesDisponibles.filter(({ tipo }) => tipo !== tipoPreferido);
+      if (alternativas.length === 0) return ataquesDisponibles[0];
       return alternativas[Math.floor(Math.random() * alternativas.length)];
     }
-    return ataquesDisponibles.find(({ tipo }) => tipo === tipoPreferido);
-  }
-
-  function obtenerNombreLinea(rango) {
-    return rango === 1 ? "liderando"
-      : rango === MAX_FORMATION_RANK ? "retaguardia"
-        : "segunda línea";
+    return ataquesDisponibles[0];
   }
 
   function recibirAtaque(
@@ -916,13 +1374,32 @@
     multiplicadorEvasion = 1,
     forzarCritico = false,
     eficaciaArma = 1,
+    penalizacionFalloDistancia = 0,
+    perfilAtaque = null,
   ) {
+    const limiteEsquiva = objetivo instanceof juego.Personaje ? 0.20 : 0.35;
     const probabilidadEsquiva = Math.min(
-      objetivo instanceof juego.Personaje ? 0.15 : 0.35,
+      limiteEsquiva,
       objetivo.probabilidadEsquivar * multiplicadorEvasion,
     );
-    if (Math.random() < probabilidadEsquiva) {
-      return { evadido: true, critico: false, murio: false, danio: 0, danioMoral: 0, danioCordura: 0, danioAgilidad: 0, danioPoder: 0 };
+    const probabilidadFallo = Math.min(
+      PROBABILIDAD_MAXIMA_FALLO_ATAQUE,
+      probabilidadEsquiva + penalizacionFalloDistancia,
+    );
+    const tiradaImpacto = Math.random();
+    if (tiradaImpacto < probabilidadFallo) {
+      return {
+        evadido: true,
+        falloDistancia: tiradaImpacto >= probabilidadEsquiva,
+        critico: false,
+        murio: false,
+        danio: 0,
+        danioMoral: 0,
+        danioCordura: 0,
+        danioAgilidad: 0,
+        danioPoder: 0,
+        poderAbsorbido: 0,
+      };
     }
 
     const critico = forzarCritico || Math.random() < probabilidadCritico;
@@ -930,22 +1407,34 @@
     const eficaciaArmaJugador = atacante instanceof juego.Personaje
       ? eficaciaArma
       : 1;
-    const danioBase = Math.max(1, ataque - resistencia);
-    const danioConTipo = Math.max(1, Math.floor(danioBase * multiplicadorDanio));
+    const potenciaPerfil = Number.isFinite(perfilAtaque?.danio) ? perfilAtaque.danio : ataque;
+    const multiplicadorPerfil = Number.isFinite(perfilAtaque?.danio) ? 1 : multiplicadorDanio;
+    const danioBase = Math.max(1, potenciaPerfil - resistencia);
+    const danioElemental = armaAtacante?.danioElemental ?? 0;
+    const danioSinVentaja = Math.max(1, Math.floor(danioBase * multiplicadorPerfil)) + danioElemental;
+    const bonificacionContra = obtenerBonificacionContra(armaAtacante, objetivo);
+    const danioConTipo = danioSinVentaja + Math.round(danioSinVentaja * bonificacionContra);
     const danioCritico = critico ? danioConTipo * 2 : danioConTipo;
     const danioCalculado = Math.max(1, Math.floor(danioCritico * eficaciaArmaJugador));
-    const grupo = objetivo instanceof juego.Personaje ? obtenerGrupoEnOrden() : [];
-    const indiceObjetivo = grupo.indexOf(objetivo);
-    const caballero = grupo.find((personaje) => personaje.id === "caballero-maldito");
-    const indiceCaballero = caballero && estaVivoCombatiente(caballero)
-      ? grupo.indexOf(caballero)
-      : -1;
-    const distanciaProteccion = indiceObjetivo - indiceCaballero;
-    const reduccionPorPosicion = indiceCaballero >= 0 && distanciaProteccion > 0
-      ? ([0, 0.15, 0.10, 0.05][distanciaProteccion] ?? 0)
-      : 0;
-    const danioMitigado = Math.round(danioCalculado * reduccionPorPosicion);
-    const danio = Math.min(objetivo.vida.actual, Math.max(0, danioCalculado - danioMitigado));
+    const seCubre = objetivo instanceof juego.Personaje && personajesCubiertos.has(objetivo.id);
+    const danioTrasCobertura = seCubre
+      ? Math.max(1, Math.floor(danioCalculado / 2))
+      : danioCalculado;
+    if (seCubre) personajesCubiertos.delete(objetivo.id);
+    const proteccionMagica = objetivo instanceof juego.Personaje ? proteccionesMagicas.get(objetivo.id) : null;
+    const danioTrasProteccionMagica = proteccionMagica
+      ? Math.max(0, Math.floor(danioTrasCobertura * (1 - proteccionMagica.porcentaje)))
+      : danioTrasCobertura;
+    const danioMitigadoProteccionMagica = danioTrasCobertura - danioTrasProteccionMagica;
+    const caballero = objetivo instanceof juego.Personaje
+      ? grupoDelEncuentro.find((personaje) => personaje.id === "caballero-maldito" && estaVivoCombatiente(personaje))
+      : null;
+    const reduccionGrupalCaballero = mitigacionCaballeroFasesEnemigas > 0
+      ? 0.15
+      : caballero?.mitigacionDanioGrupo ?? 0;
+    const danioMitigadoCaballero = Math.round(danioTrasProteccionMagica * reduccionGrupalCaballero);
+    const danioMitigado = danioCalculado - danioTrasProteccionMagica + danioMitigadoCaballero;
+    const danio = Math.min(objetivo.vida.actual, Math.max(0, danioTrasProteccionMagica - danioMitigadoCaballero));
     const vidaAntesDelGolpe = objetivo.vida.actual;
     objetivo.vida.actual -= danio;
     const murio = vidaAntesDelGolpe > 0 && objetivo.vida.actual <= 0;
@@ -970,15 +1459,26 @@
       objetivo.agilidadReducidaCombate = agilidadReducidaEncuentro.get(objetivo.id);
     }
     const danioPoder = Math.min(
-      Math.floor((armaAtacante?.danioPoder ?? 0) * eficaciaArmaJugador),
+      Math.floor(((armaAtacante?.danioPoder ?? 0) + (perfilAtaque?.danioPoder ?? 0)) * eficaciaArmaJugador),
       objetivo.poder.actual,
     );
     objetivo.poder.actual = Math.max(0, objetivo.poder.actual - danioPoder);
+    const poderAbsorbido = atacante.poder
+      ? Math.min(
+        danioPoder,
+        perfilAtaque?.absorcionPoder ?? 0,
+        Math.max(0, atacante.poder.maximo - atacante.poder.actual),
+      )
+      : 0;
+    if (poderAbsorbido > 0) {
+      atacante.poder.actual += poderAbsorbido;
+      if (atacante instanceof juego.Personaje) juego.actualizarRecursosTarjeta(atacante.id);
+    }
 
     let danioMoral = 0;
     let moralActual = null;
     let moralProtegida = 0;
-    if (objetivo.moral && atacante instanceof juego.Personaje) {
+    if (objetivo.moral && !(objetivo instanceof Enemigo && objetivo.esJefe) && atacante instanceof juego.Personaje) {
       const moralAntes = objetivo.moral.actual;
       const bonificacionEquipo = ["arma", "especial"]
         .reduce((total, slot) => {
@@ -994,7 +1494,7 @@
       objetivo.moral.actual = Math.max(0, moralAntes - Math.max(0, potenciaMoral - proteccionMoral));
       danioMoral = moralAntes - objetivo.moral.actual;
       moralActual = objetivo.moral.actual;
-    } else if (objetivo.moral && atacante instanceof Enemigo) {
+    } else if (objetivo.moral && !(objetivo instanceof Enemigo && objetivo.esJefe) && atacante instanceof Enemigo) {
       const moralAntes = objetivo.moral.actual;
       const potenciaMoral = atacante.danioMoralPorGolpe + (critico ? 5 : 0);
       const proteccionMoral = objetivo instanceof juego.Personaje
@@ -1039,14 +1539,20 @@
       danioCordura,
       corduraProtegida,
       danioPoder,
+      poderAbsorbido,
       danioAgilidad,
       danioMitigado: Math.min(danioMitigado, danioCalculado),
+      danioMitigadoProteccionMagica,
+      nombreProteccionMagica: proteccionMagica?.nombre ?? null,
+      seCubre,
     };
   }
 
   async function registrarAtaque(atacante, objetivo, resultado, etiquetaAtaque) {
     if (resultado.evadido) {
-      registrarSuceso(`${objetivo.nombre} esquiva el ataque de ${atacante.nombre}.`);
+      registrarSuceso(resultado.falloDistancia
+        ? `${atacante.nombre} falla el ataque contra ${objetivo.nombre}: la distancia dificulta acertar.`
+        : `${objetivo.nombre} esquiva el ataque de ${atacante.nombre}.`);
       return;
     }
 
@@ -1071,8 +1577,17 @@
     const proteccionCordura = resultado.corduraProtegida > 0
       ? ` El equipo protege ${resultado.corduraProtegida} ${resultado.corduraProtegida === 1 ? "punto" : "puntos"} de cordura.`
       : "";
+    const poderRecuperado = resultado.poderAbsorbido > 0
+      ? ` ${atacante.nombre} absorbe ${resultado.poderAbsorbido} de poder.`
+      : "";
     const mitigacionCaballero = resultado.danioMitigado > 0
-      ? ` El Caballero mitiga ${resultado.danioMitigado} ${resultado.danioMitigado === 1 ? "punto" : "puntos"} de daño.`
+      ? ` La defensa mitiga ${resultado.danioMitigado} ${resultado.danioMitigado === 1 ? "punto" : "puntos"} de daño.`
+      : "";
+    const mitigacionCobertura = resultado.seCubre
+      ? " La cobertura reduce a la mitad este golpe."
+      : "";
+    const mitigacionMagica = resultado.danioMitigadoProteccionMagica > 0
+      ? ` ${resultado.nombreProteccionMagica} mitiga ${resultado.danioMitigadoProteccionMagica} de daño.`
       : "";
     if (resultado.murio && !(objetivo instanceof juego.Personaje)) {
       const sonidoMuerte = objetivo instanceof juego.Personaje
@@ -1083,10 +1598,11 @@
       window.setTimeout(() => juego.sonidos?.reproducir(sonidoMuerte), 160);
     }
     registrarSuceso(
-      `${etiquetaAtaque ? `${etiquetaAtaque}: ` : ""}${atacante.nombre} golpea a ${objetivo.nombre} y le quita ${resultado.danio} ${unidadVida} de vida.${golpe} (${objetivo.vida.actual}/${objetivo.vida.maxima} PV).${mitigacionCaballero}${efectoMoral}${proteccionMoral}${efectoCordura}${proteccionCordura}${efectoAgilidad}${efectoPoder}`,
+      `${etiquetaAtaque ? `${etiquetaAtaque}: ` : ""}${atacante.nombre} golpea a ${objetivo.nombre} y le quita ${resultado.danio} ${unidadVida} de vida.${golpe} (${objetivo.vida.actual}/${objetivo.vida.maxima} PV).${mitigacionCobertura}${mitigacionMagica}${mitigacionCaballero}${efectoMoral}${proteccionMoral}${efectoCordura}${proteccionCordura}${efectoAgilidad}${efectoPoder}${poderRecuperado}`,
     );
     if (resultado.murio && objetivo instanceof Enemigo) {
       restaurarCorduraPorEnemigoDerrotado(objetivo);
+      actualizarFormacionVisualEnemigos();
     }
     if (resultado.murio && objetivo instanceof juego.Personaje) {
       await mostrarMuertePersonaje(objetivo);
@@ -1144,8 +1660,9 @@
   }
 
   function otorgarExperiencia(participantes, enemigo, danioPorPersonaje) {
-    const experienciaBase = 20 * enemigo.nivel;
-    const experienciaContribucion = 20 * enemigo.nivel;
+    const multiplicadorJefe = enemigo.esJefe ? 3 : 1;
+    const experienciaBase = 8 * enemigo.nivel * multiplicadorJefe;
+    const experienciaContribucion = 4 * enemigo.nivel * multiplicadorJefe;
     const repartosContribucion = distribuirExperienciaContribucion(
       participantes,
       danioPorPersonaje,
@@ -1163,7 +1680,6 @@
       const totalExperiencia = experienciaBase + experienciaAdicional;
       const progresionAnterior = {
         nivel: personaje.nivel,
-        puntosHabilidad: personaje.puntosHabilidad,
       };
       const progresion = juego.ganarExperiencia(personaje.id, totalExperiencia);
       const detalleContribucion = experienciaAdicional > 0
@@ -1173,16 +1689,14 @@
 
       if (progresion.nivel > progresionAnterior.nivel) {
         const nivelesGanados = progresion.nivel - progresionAnterior.nivel;
-        const puntosHabilidadGanados = progresion.puntosHabilidad - progresionAnterior.puntosHabilidad;
-        const textoPuntosHabilidad = puntosHabilidadGanados === 1 ? "punto" : "puntos";
         registrarSuceso(
-          `${personaje.nombre} sube ${nivelesGanados === 1 ? "al nivel" : `${nivelesGanados} niveles`} ${progresion.nivel} y obtiene ${puntosHabilidadGanados} ${textoPuntosHabilidad} de habilidad.`,
+          `${personaje.nombre} sube ${nivelesGanados === 1 ? "al nivel" : `${nivelesGanados} niveles`} ${progresion.nivel}: +${nivelesGanados * 10} de vida y Poder máximos.`,
         );
       }
       });
   }
 
-  async function ejecutarTurnosEnemigos(grupo, enemigos, fugitivos) {
+  async function ejecutarTurnosEnemigos(grupo, enemigos, fugitivos, danioPorPersonaje) {
     for (const enemigo of enemigos) {
       quitarMarcaTurno();
       if (!estaVivoCombatiente(enemigo) || fugitivos.has(enemigo)
@@ -1197,19 +1711,17 @@
         await esperarTurno();
         continue;
       }
-      const objetivosDisponibles = obtenerObjetivosEnRango(enemigo, grupo, enemigos, fugitivos);
-      if (objetivosDisponibles.length === 0) {
+      const eleccion = elegirAtaqueEnemigo(enemigo, grupo, enemigos, fugitivos);
+      if (!eleccion) {
         registrarSuceso(`${enemigo.nombre} no logra alcanzar al grupo desde su posición.`);
         await esperarTurno();
         continue;
       }
-
-      const eleccion = elegirAtaqueEnemigo(enemigo, objetivosDisponibles.length);
       const objetivos = eleccion.tipo === "area"
-        ? objetivosDisponibles.slice(0, eleccion.perfil.objetivosMaximos)
-        : [objetivosDisponibles[Math.floor(Math.random() * objetivosDisponibles.length)]];
+        ? eleccion.objetivos.slice(0, eleccion.perfil.objetivosMaximos)
+        : [eleccion.objetivos[Math.floor(Math.random() * eleccion.objetivos.length)]];
       if (eleccion.perfil) {
-        enemigo.poder.actual -= eleccion.perfil.costePoder;
+        enemigo.poder.actual -= eleccion.perfil.costePoder ?? 0;
       }
       if (puedeErrarAtaque(enemigo)) {
         registrarSuceso(`${enemigo.nombre} falla su ataque por el deterioro de su moral o cordura.`);
@@ -1226,10 +1738,17 @@
           enemigo,
           objetivo,
           enemigo.ataque,
-          objetivo.resistenciaFisicaCombate,
+          eleccion.perfil?.tipoDanio === "magico"
+            || (eleccion.tipo !== "basico" && enemigo.equipo.arma?.magico)
+            ? objetivo.resistenciaMagicaCombate
+            : objetivo.resistenciaFisicaCombate,
           enemigo.probabilidadCritico,
           eleccion.perfil?.multiplicadorDanio ?? 0.5,
           eleccion.tipo === "area" ? MULTIPLICADOR_EVASION_ATAQUE_AREA : 1,
+          false,
+          1,
+          obtenerPenalizacionFalloPorDistancia(enemigo, objetivo),
+          eleccion.perfil,
         );
         if (!resultado.evadido && !sonidoGolpeReproducido) {
           reproducirSonidoGolpe(enemigo);
@@ -1242,8 +1761,30 @@
           resultado,
           eleccion.tipo === "basico" ? "Ataque básico" : eleccion.perfil.nombre,
         );
+        if (!resultado.evadido && contraataquesPreparados.has(objetivo.id)
+          && estaVivoCombatiente(objetivo) && estaVivoCombatiente(enemigo)) {
+          contraataquesPreparados.delete(objetivo.id);
+          animarTarjeta(objetivo, "is-attacking");
+          const contraataque = recibirAtaque(
+            objetivo,
+            enemigo,
+            objetivo.fuerzaEfectiva,
+            enemigo.resistencia,
+            probabilidadCriticoEnCombate(objetivo),
+            0.5,
+          );
+          if (!contraataque.evadido) reproducirSonidoGolpe(objetivo);
+          if (!contraataque.evadido) {
+            danioPorPersonaje.set(
+              objetivo.id,
+              (danioPorPersonaje.get(objetivo.id) ?? 0) + contraataque.danio,
+            );
+          }
+          await registrarAtaque(objetivo, enemigo, contraataque, "Contraataque");
+        }
         const efectoGolpe = enemigo.efectoGolpe;
         if (!resultado.evadido && estaVivoCombatiente(objetivo) && efectoGolpe
+          && (efectoGolpe.activacion !== "critico" || resultado.critico)
           && Math.random() < efectoGolpe.probabilidad) {
           aplicarEfectoEstado(objetivo, efectoGolpe, enemigo.nombre);
         }
@@ -1251,13 +1792,26 @@
       await esperarTurno();
       if (encuentroHuye) return;
     }
+    if (mitigacionCaballeroFasesEnemigas > 0) mitigacionCaballeroFasesEnemigas -= 1;
+    proteccionesMagicas.clear();
   }
 
   function itemPuedeEquiparAutomaticamente(personaje, item) {
     const clase = personaje.clase.toLowerCase();
-    const esClaseMagica = ["bruja", "sacerdote"].includes(clase);
-    return (!item.magico || esClaseMagica)
-      && (item.clasesPermitidas.includes("todas") || item.clasesPermitidas.includes(clase));
+    const tipoArma = item.tipo?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const tipoArmadura = item.categoria === "armadura"
+      ? item.tipo?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() ?? ""
+      : "";
+    const esFocoMagico = item.categoria === "arma" && ["baston", "varita", "libro"].includes(tipoArma);
+    if (["caballero", "asesino"].includes(clase) && esFocoMagico) return false;
+    if (clase === "caballero" && item.categoria === "armadura" && !tipoArmadura.startsWith("pesada")) return false;
+    const equipoMagicoPermitido = item.magico
+      && ["arma", "armadura", "especial"].includes(item.categoria)
+      && ["caballero", "asesino"].includes(clase);
+    return (!item.magico || ["bruja", "sacerdote"].includes(clase) || equipoMagicoPermitido)
+      && (item.clasesPermitidas.includes("todas")
+        || item.clasesPermitidas.includes(clase)
+        || equipoMagicoPermitido);
   }
 
   function puntuarEquipo(item, slot) {
@@ -1279,9 +1833,16 @@
         + (item.proteccionCordura ?? 0) * 4
         + (bonificaciones.resistenciaFisica ?? 0) * 5
         + (bonificaciones.resistenciaCordura ?? 0) * 4
+        + (bonificaciones.resistenciaMagica ?? 0) * 5
+        + (bonificaciones.cordura ?? 0) * 1.5
+        + (bonificaciones.vida ?? 0) * 2
         + (bonificaciones.agilidad ?? 0) * 3
         + (bonificaciones.fuerza ?? 0) * 2
-        + (bonificaciones.poder ?? 0) * 2;
+        + (bonificaciones.poder ?? 0) * 2
+        + (bonificaciones.puntosAccion ?? 0) * 30
+        + (bonificaciones.danioFisico ?? 0) * 5
+        + (bonificaciones.danioMagico ?? 0) * 5
+        + (bonificaciones.bonificacionCritico ?? 0) * 100;
     }
     return ((bonificaciones.resistenciaFisica ?? 0) * 5
       + (bonificaciones.resistenciaCordura ?? 0) * 4) * eficaciaEstado
@@ -1322,11 +1883,16 @@
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => item?.categoria === "arma"
         && itemPuedeEquiparAutomaticamente(personaje, item)
-        && Object.values(item.ataquesEspeciales ?? {}).some((perfil) => (perfil.efecto === "curacion") === esCurativa));
+        && (esCurativa && item.hechizosRestauracion?.some((hechizo) => hechizo.efecto === "curacion")
+          || Object.values(item.ataquesEspeciales ?? {}).some((perfil) =>
+          personajePuedeUsarPerfilAtaque(personaje, item, perfil)
+          && (perfil.efecto === "curacion") === esCurativa)));
     if (elegibles.length === 0) return null;
     return elegibles.reduce((mejor, actual) => {
       const puntuacion = esCurativa
-        ? Object.values(actual.item.ataquesEspeciales)
+        ? (actual.item.hechizosRestauracion?.reduce((total, hechizo) => total + (hechizo.curacion ?? 0), 0) ?? 0)
+          + Object.values(actual.item.ataquesEspeciales)
+          .filter((perfil) => personajePuedeUsarPerfilAtaque(personaje, actual.item, perfil))
           .reduce((suma, perfil) => suma + (perfil.curacion ?? 0), 0)
         : puntuarEquipo(actual.item, "arma");
       return !mejor || puntuacion > mejor.puntuacion ? { ...actual, puntuacion } : mejor;
@@ -1342,8 +1908,9 @@
   function elegirCambioArmaAutomatico(personaje, grupo, fugitivos) {
     if (!juego.combateAutomatico || !juego.equipo) return null;
     const armaActual = personaje.equipo.arma;
-    const esCurativaActual = Object.values(armaActual?.ataquesEspeciales ?? {})
-      .some((perfil) => perfil.efecto === "curacion");
+    const esCurativaActual = Boolean(armaActual?.hechizosRestauracion?.length) || Object.values(armaActual?.ataquesEspeciales ?? {})
+      .some((perfil) => personajePuedeUsarPerfilAtaque(personaje, armaActual, perfil)
+        && perfil.efecto === "curacion");
     const aliadosHeridos = aliadosNecesitanCuracion(grupo, fugitivos, esCurativaActual ? 0.85 : 0.7);
     const necesitaCuracion = aliadosHeridos.some((aliado) => aliado.vida.actual < aliado.vida.maxima);
     if (necesitaCuracion && !esCurativaActual) {
@@ -1364,74 +1931,182 @@
   }
 
   function usarCuracionAutomatica(personaje) {
+    if (consumiblesUsadosEsteTurno.has(personaje.id)) return false;
     const inventario = window.inventarioGrupo?.items;
     if (!Array.isArray(inventario) || !juego.equipo) return false;
-    const clase = personaje.clase.toLowerCase();
-    const esClaseMagica = ["bruja", "sacerdote"].includes(clase);
     const pociones = inventario
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => item?.categoria === "consumible"
         && item.tipo.toLowerCase() === "pocion"
         && (item.bonificacion.vida ?? 0) > 0);
-    const grimorios = inventario
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item?.categoria === "consumible"
-        && item.tipo.toLowerCase() === "grimorio"
-        && item.magico
-        && (item.bonificacion.vida ?? 0) > 0
-        && itemPuedeEquiparAutomaticamente(personaje, item));
-
     let objetivo = null;
     let objeto = null;
     if (esVidaCritica(personaje)) {
       objetivo = personaje;
-      objeto = pociones[0] ?? (esClaseMagica ? grimorios[0] : null);
-    } else if (pociones.length === 0 && esClaseMagica) {
+      objeto = pociones[0];
+    } else if (pociones.length > 0) {
       objetivo = juego.personajes.find((aliado) => aliado !== personaje
         && estaVivoCombatiente(aliado)
         && !fugitivosDelEncuentro.has(aliado)
         && esVidaCritica(aliado));
-      objeto = objetivo ? grimorios[0] : null;
+      objeto = objetivo ? pociones[0] : null;
     }
     if (!objetivo || !objeto) return false;
+    if (personaje.puntosAccionTurno < (objetivo === personaje ? 2 : 3)) return false;
 
-    juego.equipo.usarConsumible(objeto.index + 1, objetivo.id, personaje.id);
+    juego.combate.usarConsumibleEnTurno(objeto.index + 1, objetivo.id);
     return true;
+  }
+
+  function estimarDanioUtilAtaque(personaje, objetivo, perfil, tipo) {
+    const arma = personaje.equipo.arma;
+    const esMagico = Boolean(perfil && (perfil.tipoDanio === "magico" || arma?.magico));
+    const bonificacionDanio = personaje.equipo.especial?.bonificaciones?.[
+      esMagico ? "danioMagico" : "danioFisico"
+    ] ?? 0;
+    const ataque = personaje.fuerzaEfectiva + (arma?.ataque ?? 0) + bonificacionDanio;
+    const resistencia = esMagico ? objetivo.resistenciaMagicaCombate : objetivo.resistencia;
+    const potencia = Number.isFinite(perfil?.danio) ? perfil.danio : ataque;
+    const multiplicador = Number.isFinite(perfil?.danio) ? 1 : perfil?.multiplicadorDanio ?? 0.5;
+    const danioBase = Math.max(1, potencia - resistencia);
+    const danioSinVentaja = Math.max(1, Math.floor(danioBase * multiplicador)) + (arma?.danioElemental ?? 0);
+    const danioConVentaja = danioSinVentaja
+      + Math.round(danioSinVentaja * obtenerBonificacionContra(arma, objetivo));
+    const danioCriticoEsperado = danioConVentaja * (1 + probabilidadCriticoEnCombate(personaje));
+    const eficacia = arma?.eficaciaEstado ?? 1;
+    const danioEsperado = danioCriticoEsperado * eficacia;
+    const multiplicadorEvasion = tipo === "area" ? MULTIPLICADOR_EVASION_ATAQUE_AREA : 1;
+    const probabilidadFallo = Math.min(
+      PROBABILIDAD_MAXIMA_FALLO_ATAQUE,
+      Math.min(0.35, objetivo.probabilidadEsquivar * multiplicadorEvasion)
+        + obtenerPenalizacionFalloPorDistancia(personaje, objetivo),
+    );
+    const danioUtil = Math.min(objetivo.vida.actual, danioEsperado * (1 - probabilidadFallo));
+    const puedeRematar = danioEsperado >= objetivo.vida.actual && probabilidadFallo < 0.5;
+    return danioUtil + (puedeRematar ? 2 : 0);
   }
 
   function elegirAccionAutomatica(personaje, objetivos) {
     const arma = personaje.equipo.arma;
+    if (arma?.hechizosRestauracion?.length) {
+      const enemigosVivos = objetivos.filter(estaVivoCombatiente).length;
+      for (const hechizo of arma.hechizosRestauracion) {
+        const costePA = costePuntosAccion("hechizoRestauracion", arma, hechizo);
+        if (personaje.puntosAccionTurno < costePA || personaje.poder.actual < hechizo.costePoder) continue;
+        const candidatos = objetivosHechizoRestauracion(hechizo);
+        if (candidatos.length === 0) continue;
+        let debeUsar = false;
+        let objetivo = null;
+        if (hechizo.efecto === "curacion") {
+          objetivo = hechizo.objetivo === "grupo" ? null : candidatos
+            .filter((aliado) => aliado.vida.maxima - aliado.vida.actual >= Math.max(8, hechizo.curacion * 0.6))
+            .sort((a, b) => (b.vida.maxima - b.vida.actual) - (a.vida.maxima - a.vida.actual))[0];
+          debeUsar = hechizo.objetivo === "grupo"
+            ? candidatos.length >= 2 && candidatos.some((aliado) => aliado.vida.maxima - aliado.vida.actual >= hechizo.curacion)
+            : Boolean(objetivo);
+        } else if (hechizo.efecto === "cordura") {
+          objetivo = hechizo.objetivo === "grupo" ? null : candidatos
+            .filter((aliado) => aliado.cordura.actual <= aliado.cordura.maxima * 0.7)
+            .sort((a, b) => a.cordura.actual - b.cordura.actual)[0];
+          debeUsar = hechizo.objetivo === "grupo"
+            ? candidatos.some((aliado) => aliado.cordura.actual <= aliado.cordura.maxima * 0.7)
+            : Boolean(objetivo);
+        } else {
+          debeUsar = enemigosVivos >= 2 && candidatos.length > 0;
+          if (hechizo.objetivo !== "grupo") objetivo = candidatos[0] ?? null;
+        }
+        if (debeUsar) return { tipo: "hechizoRestauracion", hechizoId: hechizo.id, objetivoId: objetivo?.id ?? null };
+      }
+    }
+    const esLibroRestaurativo = Boolean(arma?.hechizosRestauracion?.length);
+    const dirigidoPermitido = arma && !esLibroRestaurativo && personajePuedeUsarPerfilAtaque(personaje, arma, arma.ataquesEspeciales.dirigido);
+    const areaPermitida = arma && !esLibroRestaurativo && personajePuedeUsarPerfilAtaque(personaje, arma, arma.ataquesEspeciales.area);
     const aliadosHeridos = aliadosNecesitanCuracion(grupoDelEncuentro, fugitivosDelEncuentro, 0.99);
+    if (puedeActivarHabilidadEspecial(personaje)) {
+      const aliadosActivos = grupoDelEncuentro.filter((aliado) => estaVivoCombatiente(aliado)
+        && !fugitivosDelEncuentro.has(aliado));
+      const vidaFaltante = aliadosActivos.reduce((total, aliado) => total + aliado.vida.maxima - aliado.vida.actual, 0);
+      const corduraFaltante = aliadosActivos.reduce((total, aliado) => total + aliado.cordura.maxima - aliado.cordura.actual, 0);
+      const enemigosActivos = objetivos.filter(estaVivoCombatiente).length;
+      const usarHabilidad = (personaje.id === "bruja" && vidaFaltante >= 50)
+        || (personaje.id === "sacerdote-condenado" && corduraFaltante >= 50)
+        || (personaje.id === "caballero-maldito" && enemigosActivos > 0
+          && (enemigosActivos >= 2 || aliadosActivos.some((aliado) => aliado.vida.actual <= aliado.vida.maxima * 0.75)))
+        || (personaje.id === "asesino" && enemigosActivos > 0
+          && aliadosActivos.some((aliado) => aliado !== personaje));
+      if (usarHabilidad) return { tipo: "habilidad" };
+    }
     if (arma) {
       const area = arma.ataquesEspeciales.area;
       const dirigido = arma.ataquesEspeciales.dirigido;
-      const curacionArea = area.efecto === "curacion" ? aliadosHeridos : [];
+      const curacionArea = areaPermitida && area.efecto === "curacion" ? aliadosHeridos : [];
       const costeArea = obtenerCostePoder(personaje, arma, area);
-      if (curacionArea.length >= 2 && personaje.poder.actual >= costeArea) {
+      if (curacionArea.length >= 2 && personaje.puntosAccionTurno >= costePuntosAccion("area", arma)
+        && personaje.poder.actual >= costeArea) {
         return { tipo: "area" };
       }
-      const objetivoCuracion = dirigido.efecto === "curacion"
+      const objetivoCuracion = dirigidoPermitido && dirigido.efecto === "curacion"
         ? aliadosHeridos.sort((a, b) => (b.vida.maxima - b.vida.actual) - (a.vida.maxima - a.vida.actual))[0]
         : null;
       const costeDirigido = obtenerCostePoder(personaje, arma, dirigido);
-      if (objetivoCuracion && personaje.poder.actual >= costeDirigido) {
+      if (objetivoCuracion && personaje.puntosAccionTurno >= costePuntosAccion("dirigido", arma)
+        && personaje.poder.actual >= costeDirigido) {
         return { tipo: "dirigido", objetivoId: objetivoCuracion.id };
       }
     }
-    if (objetivos.length === 0) return { tipo: "saltar" };
-    if (!arma) return { tipo: "basico", objetivoId: objetivos[0].id };
+    const opciones = [];
+    const objetivosBasicos = obtenerObjetivosEnRango(
+      personaje, grupoDelEncuentro, objetivos, fugitivosDelEncuentro, obtenerAlcanceAtaque(personaje),
+    );
+    const costeBasicoPA = costePuntosAccion("basico", arma);
+    if (personaje.puntosAccionTurno >= costeBasicoPA) {
+      objetivosBasicos.forEach((objetivo) => opciones.push({
+        tipo: "basico",
+        objetivoId: objetivo.id,
+        objetivos: [objetivo],
+        perfil: null,
+        costePA: costeBasicoPA,
+        costePoder: 0,
+      }));
+    }
 
-    const dirigido = arma.ataquesEspeciales.dirigido;
-    const area = arma.ataquesEspeciales.area;
-    const costeDirigido = obtenerCostePoder(personaje, arma, dirigido);
-    const costeArea = obtenerCostePoder(personaje, arma, area);
-    if (objetivos.length > 1 && area.efecto !== "curacion" && personaje.poder.actual >= costeArea) {
-      return { tipo: "area" };
+    if (arma && dirigidoPermitido) {
+      const perfil = arma.ataquesEspeciales.dirigido;
+      const costePA = costePuntosAccion("dirigido", arma);
+      const costePoder = obtenerCostePoder(personaje, arma, perfil);
+      const objetivosDirigidos = perfil.efecto === "curacion" ? [] : obtenerObjetivosEnRango(
+        personaje, grupoDelEncuentro, objetivos, fugitivosDelEncuentro, perfil.alcance ?? arma.alcance,
+      );
+      if (personaje.puntosAccionTurno >= costePA && personaje.poder.actual >= costePoder) {
+        objetivosDirigidos.forEach((objetivo) => opciones.push({
+          tipo: "dirigido", objetivoId: objetivo.id, objetivos: [objetivo], perfil, costePA, costePoder,
+        }));
+      }
     }
-    if (dirigido.efecto !== "curacion" && personaje.poder.actual >= costeDirigido) {
-      return { tipo: "dirigido", objetivoId: objetivos[0].id };
+
+    if (arma && areaPermitida) {
+      const perfil = arma.ataquesEspeciales.area;
+      const costePA = costePuntosAccion("area", arma);
+      const costePoder = obtenerCostePoder(personaje, arma, perfil);
+      const objetivosArea = perfil.efecto === "curacion" ? [] : obtenerObjetivosEnRango(
+        personaje, grupoDelEncuentro, objetivos, fugitivosDelEncuentro, perfil.alcance ?? arma.alcance,
+      ).slice(0, Math.max(1, perfil.objetivosMaximos ?? 1));
+      if (objetivosArea.length > 0 && personaje.puntosAccionTurno >= costePA
+        && personaje.poder.actual >= costePoder) {
+        opciones.push({ tipo: "area", objetivos: objetivosArea, perfil, costePA, costePoder });
+      }
     }
-    return { tipo: "basico", objetivoId: objetivos[0].id };
+
+    if (opciones.length === 0) return { tipo: "saltar" };
+    const puntuar = (opcion) => {
+      const danoUtil = opcion.objetivos.reduce(
+        (total, objetivo) => total + estimarDanioUtilAtaque(personaje, objetivo, opcion.perfil, opcion.tipo),
+        0,
+      );
+      return danoUtil / opcion.costePA - opcion.costePoder * 0.01;
+    };
+    opciones.sort((a, b) => puntuar(b) - puntuar(a));
+    return { tipo: opciones[0].tipo, objetivoId: opciones[0].objetivoId };
   }
 
   async function ejecutarEncuentro() {
@@ -1455,7 +2130,8 @@
       equiparMejorEquipoAutomaticamente(grupo);
       const basesForzadas = grupoEncuentroForzado;
       grupoEncuentroForzado = null;
-      if (!basesForzadas && juego.poolEncuentros.length === 0) {
+      const poolEnemigosAleatorios = juego.poolEncuentros.filter((enemigo) => !enemigo.esJefe);
+      if (!basesForzadas && poolEnemigosAleatorios.length === 0) {
         throw new Error("No hay enemigos registrados para generar un encuentro.");
       }
       contadorEncuentros += 1;
@@ -1463,17 +2139,18 @@
       const aparicionesPorTipo = new Map();
       const enemigos = Array.from({ length: cantidadEnemigos }, (_, index) => {
         const base = basesForzadas?.[index]
-          ?? juego.poolEncuentros[Math.floor(Math.random() * juego.poolEncuentros.length)];
+          ?? poolEnemigosAleatorios[Math.floor(Math.random() * poolEnemigosAleatorios.length)];
         const aparicion = (aparicionesPorTipo.get(base.id) ?? 0) + 1;
         aparicionesPorTipo.set(base.id, aparicion);
         const enemigo = crearEnemigoParaEncuentro(base, contadorEncuentros, index + 1);
         if (aparicion > 1) enemigo.nombre = `${base.nombre} ${aparicion}`;
         return enemigo;
       });
+      asignarFormacionEnemiga(enemigos);
       eventLog.querySelector(".event-log-placeholder")?.remove();
       renderizarGrupoEnemigo(enemigos);
       if (requiereConfirmacion) encounterEnemies.hidden = true;
-      registrarSuceso(`El grupo se enfrenta a: ${enemigos.map((enemigo) => enemigo.nombre).join(", ")}.`);
+      registrarSuceso(`El grupo se enfrenta a: ${enemigos.filter(estaVivoCombatiente).map((enemigo) => enemigo.nombre).join(", ")}.`);
       const grupoPrimero = prepararIniciativa(grupo, enemigos);
       encuentroPreparado = {
         grupo,
@@ -1494,12 +2171,20 @@
     encuentroPreparado = null;
     equiparMejorEquipoAutomaticamente(grupo);
     grupoDelEncuentro = grupo;
+    enemigosDelEncuentro = enemigos;
     const participantes = [...grupo];
+    participantesEncuentro = participantes;
     equipoUsadoEncuentro = new Set();
     caidosDuranteCombate = new Set();
     efectosEstadoEncuentro = new Map();
+    proteccionesMagicas = new Map();
+    personajesCubiertos = new Set();
+    contraataquesPreparados = new Set();
+    mitigacionCaballeroFasesEnemigas = 0;
+    aliadosConCriticoAsesinoPendiente = new Set();
     grupo.filter(estaVivoCombatiente).forEach(registrarEquipoUsado);
     const danioPorPersonaje = new Map(participantes.map((personaje) => [personaje.id, 0]));
+    danioPorPersonajeEncuentro = danioPorPersonaje;
     const fugitivos = new Set();
     fugitivosDelEncuentro = fugitivos;
     encuentroHuye = false;
@@ -1510,12 +2195,13 @@
     fleeButton.hidden = true;
 
     combatInProgress = true;
+    consumiblesUsadosEsteTurno.clear();
     notificarExploracion("combate-iniciado");
     startButton.disabled = true;
     startButton.hidden = true;
     startButton.textContent = "Combate en curso...";
     renderizarGrupoEnemigo(enemigos, fugitivos);
-    registrarSuceso(`¡Comienza el combate contra ${enemigos.map((enemigo) => enemigo.nombre).join(", ")}!`);
+    registrarSuceso(`¡Comienza el combate contra ${enemigos.filter(estaVivoCombatiente).map((enemigo) => enemigo.nombre).join(", ")}!`);
 
     try {
       let ronda = 0;
@@ -1528,13 +2214,14 @@
         await esperarTurno();
 
         if (ronda === 1 && !grupoPrimero) {
-          await ejecutarTurnosEnemigos(grupo, enemigos, fugitivos);
+          await ejecutarTurnosEnemigos(grupo, enemigos, fugitivos, danioPorPersonaje);
           if (encuentroHuye) break;
         }
 
         for (const personaje of [...grupo]) {
         if (!estaVivoCombatiente(personaje) || fugitivos.has(personaje)
           || !enemigos.some((enemigo) => estaVivoCombatiente(enemigo) && !fugitivos.has(enemigo))) {
+          aliadosConCriticoAsesinoPendiente.delete(personaje.id);
           continue;
         }
 
@@ -1542,35 +2229,54 @@
         if (await procesarEfectosEstadoInicioTurno(personaje)) {
           await esperarTurno();
           quitarMarcaTurno();
+          aliadosConCriticoAsesinoPendiente.delete(personaje.id);
           continue;
         }
         if (!evaluarInicioTurno(personaje, fugitivos, grupo)) {
           await esperarTurno();
           quitarMarcaTurno();
+          aliadosConCriticoAsesinoPendiente.delete(personaje.id);
           continue;
         }
+        personaje.puntosAccionTurno = personaje.puntosAccionMaximos;
+        consumiblesUsadosEsteTurno.delete(personaje.id);
+        juego.actualizarRecursosTarjeta(personaje.id);
+        let avisoAlcanceMostrado = false;
+        while (personaje.puntosAccionTurno > 0 && estaVivoCombatiente(personaje) && !encuentroHuye
+          && enemigos.some((enemigo) => estaVivoCombatiente(enemigo) && !fugitivos.has(enemigo))) {
         registrarSuceso(
           juego.combateAutomatico
-            ? `Turno de ${personaje.nombre}. El grupo decide automáticamente.`
-            : `Turno de ${personaje.nombre}. Haz clic en ${personaje.equipo.arma ? "el icono del arma" : "el icono de los puños"} para elegir una acción.`,
+            ? `Acción de ${personaje.nombre}; ${personaje.puntosAccionTurno} PA disponibles. El grupo decide automáticamente.`
+            : `Acción de ${personaje.nombre}; ${personaje.puntosAccionTurno} PA disponibles. Haz clic en ${personaje.equipo.arma ? "el icono del arma" : "el icono de los puños"} para elegir.`,
         );
-        const objetivosDisponibles = obtenerObjetivosEnRango(personaje, grupo, enemigos, fugitivos);
-        if (juego.combateAutomatico && usarCuracionAutomatica(personaje)) {
+        const objetivosDisponibles = enemigos.filter((enemigo) => estaVivoCombatiente(enemigo) && !fugitivos.has(enemigo));
+        const puedeAtacarAlguien = obtenerObjetivosEnRango(
+          personaje, grupo, enemigos, fugitivos, obtenerAlcanceAtaque(personaje),
+        ).length > 0 || Object.values(personaje.equipo.arma?.ataquesEspeciales ?? {}).some((perfil) =>
+          personajePuedeUsarPerfilAtaque(personaje, personaje.equipo.arma, perfil)
+          && perfil.efecto !== "curacion"
+          && personaje.poder.actual >= obtenerCostePoder(personaje, personaje.equipo.arma, perfil)
+          && obtenerObjetivosEnRango(
+            personaje, grupo, enemigos, fugitivos, perfil.alcance ?? personaje.equipo.arma.alcance,
+          ).length > 0);
+        if (juego.combateAutomatico && personaje.puntosAccionTurno >= costePuntosAccion("consumible")
+          && usarCuracionAutomatica(personaje)) {
           await esperarTurno();
-          quitarMarcaTurno();
           continue;
         }
         const cambioArma = elegirCambioArmaAutomatico(personaje, grupo, fugitivos);
-        if (cambioArma) {
+        if (cambioArma && personaje.puntosAccionTurno >= costePuntosAccion("equipar")) {
           juego.equipo.equiparDesdeInventario(cambioArma.inventarioSlot, personaje.id);
           registrarEquipoUsado(personaje);
-          registrarSuceso(`${personaje.nombre} cambia a ${cambioArma.item.nombre}; consume su turno para prepararse.`);
+          personaje.puntosAccionTurno -= costePuntosAccion("equipar");
+          juego.actualizarRecursosTarjeta(personaje.id);
+          registrarSuceso(`${personaje.nombre} cambia a ${cambioArma.item.nombre} (2 PA).`);
           await esperarTurno();
-          quitarMarcaTurno();
           continue;
         }
         const puedeCurarSinAlcance = personaje.equipo.arma
           && Object.entries(personaje.equipo.arma.ataquesEspeciales).some(([tipo, perfil]) => {
+            if (!personajePuedeUsarPerfilAtaque(personaje, personaje.equipo.arma, perfil)) return false;
             if (perfil.efecto !== "curacion") return false;
             const coste = obtenerCostePoder(personaje, personaje.equipo.arma, perfil);
             const hayAliadoHerido = aliadosNecesitanCuracion(grupo, fugitivos, 0.99).length > 0;
@@ -1579,19 +2285,23 @@
               : hayAliadoHerido;
             return hayObjetivosSuficientes && personaje.poder.actual >= coste;
           });
-        if (objetivosDisponibles.length === 0 && !puedeCurarSinAlcance) {
-          const rango = obtenerFormacionActiva(grupo, fugitivos).indexOf(personaje) + 1;
+        const puedeUsarHechizoRestaurativo = (personaje.equipo.arma?.hechizosRestauracion ?? []).some((hechizo) =>
+          personaje.puntosAccionTurno >= costePuntosAccion("hechizoRestauracion", personaje.equipo.arma, hechizo)
+          && personaje.poder.actual >= hechizo.costePoder
+          && objetivosHechizoRestauracion(hechizo).length > 0);
+        if (!puedeAtacarAlguien && !puedeCurarSinAlcance && !puedeUsarHechizoRestaurativo && !avisoAlcanceMostrado) {
+          avisoAlcanceMostrado = true;
           const alcance = obtenerAlcanceAtaque(personaje);
           registrarSuceso(
             personaje.equipo.arma
-              ? `${personaje.nombre} no puede atacar desde la ${obtenerNombreLinea(rango)}: su arma solo alcanza ${alcance} ${alcance === 1 ? "línea" : "líneas"}.`
-              : `${personaje.nombre} no puede atacar desde la ${obtenerNombreLinea(rango)}: sin arma, su ataque básico solo alcanza una línea.`,
+              ? `${personaje.nombre} no tiene enemigos dentro del alcance de su arma (${alcance} ${alcance === 1 ? "posición" : "posiciones"}).`
+              : `${personaje.nombre} no tiene enemigos en la primera posición para atacar con los puños.`,
           );
         }
 
         const eleccion = juego.combateAutomatico
           ? elegirAccionAutomatica(personaje, objetivosDisponibles)
-          : await esperarAccionDelJugador(personaje, objetivosDisponibles, grupo);
+          : await esperarAccionDelJugador(personaje, objetivosDisponibles, grupo, enemigos);
         if (encuentroHuye) {
           break;
         }
@@ -1599,23 +2309,45 @@
           const item = window.inventarioGrupo?.items?.[eleccion.inventarioSlot - 1];
           const aliado = juego.personajes.find((entry) => entry.id === eleccion.objetivoId);
           if (!item?.revivir || !aliado || aliado.vida.actual > 0) {
-            throw new Error("La selecciÃ³n de aliado para revivir ya no es vÃ¡lida.");
+            throw new Error("La selección de aliado para revivir ya no es válida.");
           }
+          personaje.puntosAccionTurno -= costePuntosAccion("revivir");
+          juego.actualizarRecursosTarjeta(personaje.id);
           juego.equipo.usarConsumible(eleccion.inventarioSlot, aliado.id, personaje.id);
-          actualizarFormacionTrasResurreccion(aliado, grupo, participantes, danioPorPersonaje);
+          registrarResurreccionEnEncuentro(aliado, grupo, participantes, danioPorPersonaje);
           await esperarTurno();
-          quitarMarcaTurno();
           continue;
         }
         if (eleccion.tipo === "consumible") {
+          personaje.puntosAccionTurno -= eleccion.costePA ?? costePuntosAccion("consumible");
+          juego.actualizarRecursosTarjeta(personaje.id);
           await esperarTurno();
-          quitarMarcaTurno();
           continue;
         }
+        if (eleccion.tipo === "habilidad") {
+          if (!activarHabilidadEspecial(personaje)) {
+            registrarSuceso(`${personaje.nombre} no puede activar su habilidad especial ahora.`);
+          }
+          personaje.puntosAccionTurno = 0;
+          juego.actualizarRecursosTarjeta(personaje.id);
+          await esperarTurno();
+          break;
+        }
         if (eleccion.tipo === "saltar") {
+          if (personajesCubiertos.has(personaje.id) && personaje.puntosAccionTurno > 0) {
+            contraataquesPreparados.add(personaje.id);
+            registrarSuceso(`${personaje.nombre} reserva ${personaje.puntosAccionTurno} PA para contraatacar al primer enemigo que le acierte.`);
+          }
           registrarSuceso(`${personaje.nombre} pasa su turno.`);
           await esperarTurno();
-          quitarMarcaTurno();
+          break;
+        }
+        if (eleccion.tipo === "cubrirse") {
+          personaje.puntosAccionTurno -= costePuntosAccion("cubrirse");
+          juego.actualizarRecursosTarjeta(personaje.id);
+          personajesCubiertos.add(personaje.id);
+          registrarSuceso(`${personaje.nombre} se cubre y reducirá a la mitad el próximo golpe que reciba.`);
+          await esperarTurno();
           continue;
         }
         if (eleccion.tipo === "equipar") {
@@ -1623,11 +2355,62 @@
           if (!item || !["arma", "armadura", "especial"].includes(item.categoria)) {
             throw new Error("El objeto de equipo seleccionado ya no está disponible.");
           }
+          personaje.puntosAccionTurno -= costePuntosAccion("equipar");
           juego.equipo.equiparDesdeInventario(eleccion.inventarioSlot, personaje.id);
+          juego.actualizarRecursosTarjeta(personaje.id);
           registrarEquipoUsado(personaje);
-          registrarSuceso(`${personaje.nombre} se equipa ${item.nombre}; consume su turno.`);
+          registrarSuceso(`${personaje.nombre} se equipa ${item.nombre} (2 PA).`);
           await esperarTurno();
-          quitarMarcaTurno();
+          continue;
+        }
+        const hechizoSeleccionado = eleccion.tipo === "hechizoRestauracion"
+          ? personaje.equipo.arma?.hechizosRestauracion?.find((hechizo) => hechizo.id === eleccion.hechizoId)
+          : null;
+        const costeSeleccionado = costePuntosAccion(eleccion.tipo, personaje.equipo.arma, hechizoSeleccionado);
+        if (personaje.puntosAccionTurno < costeSeleccionado) {
+          registrarSuceso(`${personaje.nombre} no tiene suficientes PA; termina su turno.`);
+          break;
+        }
+        personaje.puntosAccionTurno -= costeSeleccionado;
+        juego.actualizarRecursosTarjeta(personaje.id);
+        if (eleccion.tipo === "hechizoRestauracion") {
+          if (!hechizoSeleccionado || personaje.poder.actual < hechizoSeleccionado.costePoder) {
+            registrarSuceso(`${personaje.nombre} no puede lanzar ese hechizo restaurativo ahora.`);
+            await esperarTurno();
+            continue;
+          }
+          personaje.poder.actual -= hechizoSeleccionado.costePoder;
+          juego.actualizarRecursosTarjeta(personaje.id);
+          const objetivosHechizo = hechizoSeleccionado.objetivo === "grupo"
+            ? grupo.filter((aliado) => objetivoPuedeRecibirHechizo(aliado, hechizoSeleccionado))
+            : [grupo.find((aliado) => aliado.id === eleccion.objetivoId && objetivoPuedeRecibirHechizo(aliado, hechizoSeleccionado))].filter(Boolean);
+          if (objetivosHechizo.length === 0) {
+            registrarSuceso(`${hechizoSeleccionado.nombre} ya no tiene un objetivo válido.`);
+          } else if (puedeErrarAtaque(personaje) || Math.random() < PROBABILIDAD_FALLO_HECHIZO_RESTAURATIVO) {
+            registrarSuceso(`${personaje.nombre} falla ${hechizoSeleccionado.nombre}; el hechizo no produce efecto.`);
+          } else {
+            juego.sonidos?.reproducir("magiaCurativa");
+            objetivosHechizo.forEach((objetivo) => {
+              if (hechizoSeleccionado.efecto === "curacion") {
+                const multiplicador = personaje.id === "sacerdote-condenado" ? 1.1 : 1;
+                const antes = objetivo.vida.actual;
+                objetivo.vida.actual = Math.min(objetivo.vida.maxima, antes + Math.round(hechizoSeleccionado.curacion * multiplicador));
+                registrarSuceso(`${personaje.nombre} usa ${hechizoSeleccionado.nombre} sobre ${objetivo.nombre} y restaura ${objetivo.vida.actual - antes} PV.`);
+              } else if (hechizoSeleccionado.efecto === "cordura") {
+                const antes = objetivo.cordura.actual;
+                objetivo.cordura.actual = Math.min(objetivo.cordura.maxima, antes + hechizoSeleccionado.restauracion);
+                registrarSuceso(`${personaje.nombre} usa ${hechizoSeleccionado.nombre} sobre ${objetivo.nombre} y restaura ${objetivo.cordura.actual - antes} de Cordura.`);
+              } else {
+                const proteccionAnterior = proteccionesMagicas.get(objetivo.id);
+                if (!proteccionAnterior || hechizoSeleccionado.porcentaje > proteccionAnterior.porcentaje) {
+                  proteccionesMagicas.set(objetivo.id, { porcentaje: hechizoSeleccionado.porcentaje, nombre: hechizoSeleccionado.nombre });
+                  registrarSuceso(`${objetivo.nombre} queda protegido por ${hechizoSeleccionado.nombre} durante la próxima fase enemiga.`);
+                } else registrarSuceso(`${objetivo.nombre} ya tiene una protección igual o más fuerte.`);
+              }
+              juego.actualizarRecursosTarjeta(objetivo.id);
+            });
+          }
+          await esperarTurno();
           continue;
         }
         const perfil = eleccion.tipo === "basico"
@@ -1636,7 +2419,10 @@
         const aliadosVivos = grupo.filter((objetivo) => estaVivoCombatiente(objetivo)
           && objetivo.vida.actual < objetivo.vida.maxima
           && !fugitivos.has(objetivo));
-        const objetivosDisponiblesAtaque = perfil?.efecto === "curacion" ? aliadosVivos : objetivosDisponibles;
+        const alcanceAccion = perfil?.alcance ?? personaje.equipo.arma?.alcance ?? 1;
+        const objetivosDisponiblesAtaque = perfil?.efecto === "curacion"
+          ? aliadosVivos
+          : obtenerObjetivosEnRango(personaje, grupo, enemigos, fugitivos, alcanceAccion);
         const objetivos = eleccion.tipo === "area"
           ? objetivosDisponiblesAtaque.slice(0, perfil.objetivosMaximos)
           : [objetivosDisponiblesAtaque.find((objetivo) => objetivo.id === eleccion.objetivoId)];
@@ -1647,10 +2433,15 @@
           personaje.poder.actual -= obtenerCostePoder(personaje, personaje.equipo.arma, perfil);
         }
         juego.actualizarRecursosTarjeta(personaje.id);
+        const esAtaqueMagico = Boolean(perfil && (
+          perfil.tipoDanio === "magico" || personaje.equipo.arma?.magico
+        ));
+        const bonificacionDanioEspecial = personaje.equipo.especial?.bonificaciones?.[
+          esAtaqueMagico ? "danioMagico" : "danioFisico"
+        ] ?? 0;
         const ataque = personaje.fuerzaEfectiva
-          + (eleccion.tipo === "basico"
-            ? 0
-            : personaje.equipo.arma?.ataque ?? 0);
+          + (personaje.equipo.arma?.ataque ?? 0)
+          + bonificacionDanioEspecial;
         const multiplicadorDanio = perfil?.multiplicadorDanio ?? 0.5;
         animarTarjeta(personaje, "is-attacking");
         const falloPorEstado = puedeErrarAtaque(personaje);
@@ -1691,12 +2482,17 @@
               personaje,
               objetivo,
               ataque,
-              objetivo.resistencia,
-              personaje.probabilidadCritico,
+              perfil?.tipoDanio === "magico"
+                || (perfil && personaje.equipo.arma?.magico)
+                ? objetivo.resistenciaMagicaCombate
+                : objetivo.resistencia,
+              probabilidadCriticoEnCombate(personaje),
               multiplicadorDanio,
               eleccion.tipo === "area" ? MULTIPLICADOR_EVASION_ATAQUE_AREA : 1,
               emboscadaPendiente,
               personaje.equipo.arma?.eficaciaEstado ?? 1,
+              obtenerPenalizacionFalloPorDistancia(personaje, objetivo),
+              perfil,
             );
             if (!resultado.evadido && !sonidoGolpeReproducido) {
               reproducirSonidoGolpe(personaje);
@@ -1704,12 +2500,6 @@
             }
             if (emboscadaPendiente && !resultado.evadido) {
               emboscadaPendiente = false;
-            }
-            const efectoPreparado = eleccion.tipo === "basico"
-              ? null
-              : personaje.equipo.arma?.efectoPreparado;
-            if (!resultado.evadido) {
-              if (efectoPreparado) delete personaje.equipo.arma.efectoPreparado;
             }
             if (!resultado.evadido) {
               danioPorPersonaje.set(
@@ -1721,29 +2511,31 @@
               personaje,
               objetivo,
               resultado,
-              eleccion.tipo === "basico" ? "Puñetazo" : perfil.nombre,
+              eleccion.tipo === "basico"
+                ? (personaje.equipo.arma ? "Ataque básico" : "Puñetazo")
+                : perfil.nombre,
             );
             if (!resultado.evadido && estaVivoCombatiente(objetivo)) {
-              aplicarEfectoEstado(objetivo, efectoPreparado, personaje.nombre);
               aplicarEfectoEstado(objetivo, perfil?.efectoEstado, personaje.nombre);
+              if (resultado.critico) {
+                aplicarEfectoEstado(objetivo, personaje.equipo.arma?.efectoCritico, personaje.nombre);
+              }
             }
           }
         }
         await esperarTurno();
+        }
         quitarMarcaTurno();
+        aliadosConCriticoAsesinoPendiente.delete(personaje.id);
       }
       if (!encuentroHuye && !(ronda === 1 && !grupoPrimero)) {
-        await ejecutarTurnosEnemigos(grupo, enemigos, fugitivos);
+        await ejecutarTurnosEnemigos(grupo, enemigos, fugitivos, danioPorPersonaje);
       }
     }
 
     const enemigosEnPie = enemigos.filter((enemigo) => estaVivoCombatiente(enemigo) && !fugitivos.has(enemigo));
     const grupoEnPie = grupo.filter((personaje) => estaVivoCombatiente(personaje) && !fugitivos.has(personaje));
-    if (encuentroHuye) {
-      resultadoEncuentro = "huida";
-      registrarSuceso("El grupo logra escapar del combate.");
-      renderizarGrupoEnemigo([]);
-    } else if (enemigosEnPie.length === 0 && grupoEnPie.length > 0) {
+    if (enemigosEnPie.length === 0 && grupoEnPie.length > 0) {
       resultadoEncuentro = "victoria";
       const enemigosDerrotados = enemigos.filter((enemigo) => !estaVivoCombatiente(enemigo));
       enemigosDerrotados.forEach((enemigo) => registrarSuceso(`${enemigo.nombre} ha sido derrotado.`));
@@ -1764,6 +2556,10 @@
         registrarSuceso("No hay objetos disponibles para el nivel de este encuentro.");
         renderizarGrupoEnemigo([]);
       }
+    } else if (encuentroHuye) {
+      resultadoEncuentro = "huida";
+      registrarSuceso("El grupo logra escapar del combate.");
+      renderizarGrupoEnemigo([]);
     } else if (grupoEnPie.length === 0) {
       resultadoEncuentro = "derrota";
       registrarSuceso(
@@ -1776,11 +2572,15 @@
       registrarSuceso("El combate se detuvo tras alcanzar el límite de rondas.");
       renderizarGrupoEnemigo([]);
     }
+    restaurarPoderTrasCombate(grupo);
     combateConcluido = true;
     } finally {
       quitarMarcaTurno();
       combatInProgress = false;
       fugitivosDelEncuentro = new Set();
+      participantesEncuentro = [];
+      danioPorPersonajeEncuentro = null;
+      enemigosDelEncuentro = [];
       startButton.disabled = false;
       startButton.hidden = true;
       startButton.textContent = "Comenzar encuentro";
@@ -1788,8 +2588,7 @@
       sePuedeIntentarHuir = false;
       if (combateConcluido) deteriorarEquipoUsado();
       juego.personajes.forEach((personaje) => {
-        juego.actualizarRecursosTarjeta(personaje.id);
-        personaje.poder.actual = personaje.poder.maximo;
+        delete personaje.puntosAccionTurno;
         juego.actualizarRecursosTarjeta(personaje.id);
       });
       agilidadReducidaEncuentro.forEach((_, id) => {
@@ -1803,8 +2602,13 @@
       });
       agilidadReducidaEncuentro = new Map();
       efectosEstadoEncuentro = new Map();
-      juego.actualizarControlesFormacion?.();
-      notificarExploracion("finalizado", { resultado: resultadoEncuentro });
+      proteccionesMagicas = new Map();
+      personajesCubiertos = new Set();
+      contraataquesPreparados = new Set();
+      notificarExploracion("finalizado", {
+        resultado: resultadoEncuentro,
+        enemigos: resultadoEncuentro === "victoria" ? null : enemigos,
+      });
     }
   }
 
@@ -1840,6 +2644,7 @@
       return true;
     },
     crearInstanciaBotin,
+    recibirDanioExploracion,
     obtenerEstadoConsumible,
     usarConsumibleEnTurno,
   };

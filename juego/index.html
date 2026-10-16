@@ -53,10 +53,17 @@
       <button class="adventure-enter" type="button">Entrar en la mazmorra</button>
     </dialog>
 
-    <dialog class="story-mode-dialog" aria-labelledby="story-mode-title">
-      <h2 id="story-mode-title">Modo historia</h2>
-      <p>La aventura con mapas hechos a mano todavía está en preparación.</p>
-      <button class="story-mode-close" type="button">Volver al menú</button>
+    <dialog class="story-mode-dialog story-notice-dialog" aria-labelledby="story-mode-title">
+      <p class="story-mode-eyebrow">Crónicas de la Montaña Negra</p>
+      <h2 id="story-mode-title"></h2>
+      <img class="story-mode-image" alt="" hidden>
+      <p class="story-mode-text"></p>
+      <p class="story-mode-page" aria-live="polite"></p>
+      <nav class="story-mode-controls" aria-label="Páginas de la historia">
+        <button class="story-mode-previous" type="button">Anterior</button>
+        <button class="story-mode-next" type="button">Siguiente</button>
+        <button class="story-mode-close" type="button">Volver al menú</button>
+      </nav>
     </dialog>
 
     <dialog class="tutorial-dialog" aria-labelledby="tutorial-title">
@@ -76,7 +83,9 @@
         <section>
           <h3>Combate</h3>
           <p>Al encontrar enemigos puedes comenzar el combate o huir cuando esa opción esté disponible. El orden de la formación determina quién está al frente. Las armas tienen alcances distintos: si un aliado no alcanza a ningún enemigo, tendrá que pasar el turno o usar otra acción disponible.</p>
-          <p>Los ataques pueden fallar. Las habilidades especiales consumen poder; algunos ataques también pueden curar, dañar atributos o aplicar efectos como veneno, quemadura y parálisis.</p>
+          <p>Los ataques pueden fallar. Cada aliado obtiene puntos de acción segun su agilidad: ataque basico 2 PA, dirigido 3, area 4, cubrirse 1 y cambiar equipo 2. Puedes hacer varias acciones antes de terminar el turno; el poder sigue siendo un recurso aparte para las habilidades y recupera 3 puntos al comenzar cada turno.</p>
+          <p>Si te cubres y terminas el turno con PA sobrantes, contraatacas con un golpe basico al primer enemigo que te acierte. Algunos ataques reducen el poder enemigo; los perfiles con absorcionPoder recuperan parte del poder drenado.</p>
+          <p>Algunas habilidades tambien pueden curar, danar atributos o aplicar efectos como veneno, quemadura y paralisis.</p>
         </section>
         <section>
           <h3>Formación</h3>
@@ -93,7 +102,8 @@
         </section>
         <section>
           <h3>Escaramuza e historia</h3>
-          <p>Escaramuza genera mapas y encuentros al azar. Al avanzar por la salida, el mapa aumenta de tamaño y aparecen más encuentros. Nueva partida abrirá el modo historia, que usará mapas hechos a mano y puntos de interés ubicados manualmente; ese modo todavía está en preparación.</p>
+          <p>Escaramuza es una expedición roguelike: escala enemigos y encuentros al avanzar, coloca un jefe cada dos niveles y conserva cofres y trampas. No incluye POI narrativos ni vendedores aleatorios.</p>
+          <p>Historia usa mapas diseñados a mano y POI colocados en coordenadas fijas para contar escenas con imágenes y texto. Los encuentros normales siguen apareciendo aleatoriamente.</p>
         </section>
       </article>
       <footer class="tutorial-footer">
@@ -117,14 +127,18 @@
           <span></span><span></span><span></span>
         </button>
         <p class="game-topbar-title">Aventura</p>
+        <div class="game-topbar-resources" aria-label="Recursos del grupo">
+          <p class="inventory-currency" aria-live="polite">Monedas: 0 &#129689;</p>
+          <p class="inventory-provisions" aria-live="polite">Raciones: 0</p>
+          <p class="inventory-fatigue" aria-live="polite">Fatiga: 0/6</p>
+        </div>
         <nav class="game-menu-panel" id="game-menu-panel" aria-label="Menú de juego" hidden>
           <button class="game-menu-return" type="button">Salir al menú principal</button>
         </nav>
       </header>
     <main class="game-screen" aria-label="Interfaz del juego">
       <aside class="interface-column interface-column-left" aria-label="Inventario compartido del grupo">
-        <p class="inventory-currency" aria-live="polite">Monedas: 0 &#129689;</p>
-        <p class="inventory-provisions" aria-live="polite">Raciones: 0</p>
+        <button class="inventory-rest" type="button" disabled>Descansar</button>
         <ol class="inventory-grid" aria-label="Espacios del inventario"></ol>
       </aside>
       <section class="interface-center" aria-label="Área principal del juego">
@@ -146,10 +160,10 @@
           <div class="map-display" aria-label="Mapa de la mazmorra" aria-live="polite"></div>
         </section>
         <nav class="movement-panel" aria-label="Controles de dirección">
-          <button class="direction-button direction-up" data-direction="up" type="button" aria-label="Avanzar" title="Avanzar" disabled>&#x2191;</button>
-          <button class="direction-button direction-left" data-direction="left" type="button" aria-label="Ir a la izquierda" title="Ir a la izquierda" disabled>&#x2190;</button>
-          <button class="direction-button direction-down" data-direction="down" type="button" aria-label="Retroceder" title="Retroceder" disabled>&#x2193;</button>
-          <button class="direction-button direction-right" data-direction="right" type="button" aria-label="Ir a la derecha" title="Ir a la derecha" disabled>&#x2192;</button>
+          <button class="direction-button direction-up" data-direction="up" type="button" aria-label="Mover al norte" title="Mover al norte" disabled>&#x2191;</button>
+          <button class="direction-button direction-left" data-direction="left" type="button" aria-label="Mover al oeste" title="Mover al oeste" disabled>&#x2190;</button>
+          <button class="direction-button direction-down" data-direction="down" type="button" aria-label="Mover al sur" title="Mover al sur" disabled>&#x2193;</button>
+          <button class="direction-button direction-right" data-direction="right" type="button" aria-label="Mover al este" title="Mover al este" disabled>&#x2192;</button>
         </nav>
       </aside>
     </main>
@@ -157,8 +171,7 @@
     <section class="player-bar" aria-label="Pantalla de grupo">
       <article class="player-card" data-character-id="caballero-maldito" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Caballero a la izquierda">&#x2190;</button><h2 class="character-open">Caballero</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Caballero a la derecha">&#x2192;</button></div>
-          <p class="player-position" aria-label="Posición en el grupo"></p>
+          <div class="player-card-name-row"><h2 class="character-open">Caballero</h2></div>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
         <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
@@ -173,8 +186,7 @@
       </article>
       <article class="player-card" data-character-id="bruja" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Bruja a la izquierda">&#x2190;</button><h2 class="character-open">Bruja</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Bruja a la derecha">&#x2192;</button></div>
-          <p class="player-position" aria-label="Posición en el grupo"></p>
+          <div class="player-card-name-row"><h2 class="character-open">Bruja</h2></div>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
         <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
@@ -189,8 +201,7 @@
       </article>
       <article class="player-card" data-character-id="sacerdote-condenado" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Sacerdote a la izquierda">&#x2190;</button><h2 class="character-open">Sacerdote</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Sacerdote a la derecha">&#x2192;</button></div>
-          <p class="player-position" aria-label="Posición en el grupo"></p>
+          <div class="player-card-name-row"><h2 class="character-open">Sacerdote</h2></div>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
         <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
@@ -205,8 +216,7 @@
       </article>
       <article class="player-card" data-character-id="asesino" aria-roledescription="tarjeta de aliado">
         <div class="player-card-header">
-          <div class="player-card-name-row"><button class="move-button" type="button" data-move="left" aria-label="Mover Asesino a la izquierda">&#x2190;</button><h2 class="character-open">Asesino</h2><button class="move-button" type="button" data-move="right" aria-label="Mover Asesino a la derecha">&#x2192;</button></div>
-          <p class="player-position" aria-label="Posición en el grupo"></p>
+          <div class="player-card-name-row"><h2 class="character-open">Asesino</h2></div>
         </div>
         <div class="player-card-resources" aria-label="Recursos del personaje"></div>
         <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
@@ -246,7 +256,7 @@
 
       <section class="dialog-section" aria-labelledby="character-attributes-title">
         <h3 id="character-attributes-title">Atributos</h3>
-        <p class="skill-points">Puntos de habilidad disponibles: <strong>0</strong></p>
+        <p class="skill-points">Los atributos mejoran mediante el equipo.</p>
         <ul class="attribute-list"></ul>
       </section>
 
@@ -269,7 +279,7 @@
         <p class="character-buff"></p>
       </section>
       <div class="character-dialog-actions">
-        <button class="dialog-accept" type="button">Aceptar</button>
+        <button class="dialog-accept" type="button">Cerrar</button>
       </div>
     </dialog>
     <dialog class="equipment-actions-dialog" aria-labelledby="equipment-actions-title">
@@ -301,6 +311,7 @@
       <p class="poi-description"></p>
       <div class="poi-dialog-actions">
         <button class="poi-action" type="button" hidden></button>
+        <button class="poi-storage" type="button" hidden>Guardar</button>
         <button class="encounter-start" type="button" hidden>Comenzar encuentro</button>
         <button class="encounter-flee" type="button" hidden>Huir</button>
         <button class="poi-close" type="button">Cerrar</button>
@@ -317,6 +328,23 @@
         <section><h3>Inventario del grupo</h3><div class="merchant-inventory" aria-label="Objetos del grupo"></div></section>
       </div>
       <button class="merchant-close" type="button">Cerrar</button>
+    </dialog>
+    <dialog class="storage-dialog" aria-labelledby="storage-title">
+      <h2 id="storage-title">Cofre compartido</h2>
+      <div class="storage-columns">
+        <section><h3>Inventario del grupo</h3><div class="storage-backpack" aria-label="Objetos disponibles para guardar"></div></section>
+        <section><h3>Cofre</h3><div class="storage-items" aria-label="Objetos guardados"></div></section>
+      </div>
+      <button class="storage-close" type="button">Volver</button>
+    </dialog>
+    <dialog class="rest-confirm-dialog" aria-labelledby="rest-confirm-title">
+      <h2 id="rest-confirm-title">¿Quieres descansar?</h2>
+      <img src="recursos/imagen/especiales/fogata_r.jpg" alt="Una fogata en un refugio de piedra">
+      <p>Recuperarás todos tus recursos, pero consumirás 10 provisiones.</p>
+      <div class="rest-confirm-actions">
+        <button class="rest-confirm-accept" type="button">Aceptar</button>
+        <button class="rest-confirm-cancel" type="button">Cancelar</button>
+      </div>
     </dialog>
     <dialog class="character-death-dialog" aria-labelledby="character-death-title">
       <h2 id="character-death-title">Un aliado ha caído</h2>
@@ -335,17 +363,14 @@
         <input id="automatic-combat-toggle" type="checkbox" role="switch" aria-checked="false">
         <span>Combate automático</span>
       </label>
-      <p>El grupo elegirá su equipo, ataques y curaciones durante los encuentros.</p>
       <label class="options-toggle" for="automatic-exploration-toggle">
         <input id="automatic-exploration-toggle" type="checkbox" role="switch" aria-checked="false">
         <span>Exploración automática</span>
       </label>
-      <p>El grupo avanza hacia el punto de interés pendiente más cercano y se detiene al encontrarlo.</p>
       <label class="options-toggle" for="music-toggle">
         <input id="music-toggle" type="checkbox" role="switch" aria-checked="true">
         <span>Música</span>
       </label>
-      <p>La música suena en el menú y se detiene al entrar en la mazmorra.</p>
       <button class="options-close options-resource-open" type="button">Cargar recurso</button>
       <button class="options-close options-poi-open" type="button">Cargar POI</button>
       <button class="options-close options-map-open" type="button">Cargar mapa</button>
@@ -375,7 +400,11 @@
         </div>
       </form>
     </dialog>
+    <script src="item/progresionEquipo.js" defer></script>
     <script src="item/item.js" defer></script>
+    <script src="item/hechizosRestauracion.js" defer></script>
+    <script src="item/propiedadesArmadura.js" defer></script>
+    <script src="item/propiedadesAnillo.js" defer></script>
     <script src="item/armadurasBase.js" defer></script>
     <script src="item/armasBase.js" defer></script>
     <script src="item/objetosEspecialesBase.js" defer></script>
@@ -398,13 +427,13 @@
     <script src="historias/trasfondos.js" defer></script>
     <script src="personaje/personajes.js" defer></script>
     <script src="personaje/progresion.js" defer></script>
-    <script src="personaje/formacion.js" defer></script>
     <script src="audio/sonidos.js" defer></script>
     <script src="audio/musica.js" defer></script>
     <script src="inventario/inventario.js" defer></script>
     <script src="personaje/equipo.js" defer></script>
     <script src="personaje/modalPersonaje.js" defer></script>
     <script src="combate/combate.js" defer></script>
+    <script src="exploracion/generadorMazmorra.js" defer></script>
     <script src="exploracion/mazmorra.js" defer></script>
     <script src="comercio/vendedor.js" defer></script>
     <script src="app/menu.js" defer></script>

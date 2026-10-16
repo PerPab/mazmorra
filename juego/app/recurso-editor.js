@@ -12,13 +12,21 @@
   let selectedImage = "";
   let selectedAudio = "";
 
-  const classes = ["caballero", "bruja", "sacerdote", "asesino"];
+  const classes = ["caballero", "bruja", "sacerdote", "asesino", "todas"];
   const bonusAttributes = [
     ["resistenciaFisica", "Resistencia física"],
     ["resistenciaCordura", "Resistencia a cordura"],
     ["fuerza", "Fuerza"],
     ["agilidad", "Agilidad"],
     ["poder", "Poder"],
+  ];
+  const specialBonusAttributes = [
+    ...bonusAttributes,
+    ["resistenciaMagica", "Resistencia mágica"],
+    ["vida", "Vida máxima"],
+    ["danioFisico", "Daño físico"],
+    ["danioMagico", "Daño mágico"],
+    ["bonificacionCritico", "Probabilidad de crítico (0 a 1)"],
   ];
 
   function field(name, label, type = "text", options = {}) {
@@ -38,12 +46,21 @@
     arma: [
       field("spawnInventory", "Spawnear una copia en el inventario al iniciar cada partida", "checkbox"),
       field("tipo", "Tipo de arma", "text", { value: "espada", placeholder: "espada, arco, baston o libro" }),
+      field("subtipo", "Variante del arma", "text", { placeholder: "puñal, espada corta, arco largo, pica..." }),
       field("estado", "Estado inicial", "select", { options: [["optimo", "Óptimo"], ["usado", "Usado"], ["dañado", "Dañado"]] }),
       field("ataque", "Ataque", "number", { min: 0, value: 1 }),
-      field("alcance", "Alcance", "number", { min: 1, max: 4, value: 1 }),
+      field("alcance", "Alcance", "number", { min: 1, max: 3, value: 1 }),
+      field("costePABasico", "PA del ataque básico", "number", { min: 1, value: 2 }),
       field("danioMoral", "Daño moral", "number", { min: 0, value: 0 }),
       field("danioAgilidad", "Daño a agilidad", "number", { min: 0, value: 0 }),
       field("danioPoder", "Daño a poder", "number", { min: 0, value: 0 }),
+      field("danioElemental", "Daño elemental adicional", "number", { min: 0, value: 0 }),
+      field("bonificacionContraBlindado", "Bonus de daño contra armadura (0.25 = 25 %)", "number", { min: 0, max: 1, step: 0.05, value: 0 }),
+      field("bonificacionContraMaldito", "Bonus de daño contra malditos (0.30 = 30 %)", "number", { min: 0, max: 1, step: 0.05, value: 0 }),
+      field("elemento", "Elemento (si hay daño elemental)", "text", { placeholder: "fuego, hielo, veneno..." }),
+      field("efectoCritico_tipo", "Efecto de estado al hacer crítico", "select", { options: [["", "Ninguno"], ["veneno", "Veneno"], ["quemadura", "Quemadura"], ["paralisis", "Parálisis"]] }),
+      field("efectoCritico_danio", "Daño por turno del efecto crítico", "number", { min: 0, value: 0 }),
+      field("efectoCritico_duracion", "Turnos del efecto crítico", "number", { min: 1, value: 2 }),
       field("magico", "Es mágica", "checkbox"),
       field("clasesPermitidas", "Clases permitidas", "multiselect", { options: classes }),
       ...bonusAttributes.map(([name, label]) => field(`bonificacion_${name}`, `Bonificación: ${label}`, "number", { value: 0 })),
@@ -51,11 +68,19 @@
       field("dirigido_efecto", "Ataque dirigido: efecto", "select", { options: [["danio", "Daño"], ["curacion", "Curación"]] }),
       field("dirigido_valor", "Dirigido: multiplicador de daño o curación", "number", { min: 0.1, step: 0.1, value: 1.5 }),
       field("dirigido_coste", "Dirigido: coste de poder", "number", { min: 0, value: 10 }),
+      field("dirigido_pa", "Dirigido: coste de PA", "number", { min: 1, value: 3 }),
+      field("dirigido_danioPoder", "Dirigido: poder que quita", "number", { min: 0, value: 0 }),
+      field("dirigido_absorcionPoder", "Dirigido: poder que absorbe", "number", { min: 0, value: 0 }),
+      field("dirigido_alcance", "Dirigido: alcance (vacío = alcance del arma)", "number", { min: 1, max: 3 }),
       field("area_nombre", "Ataque de área: nombre", "text", { value: "Ataque de área" }),
       field("area_efecto", "Ataque de área: efecto", "select", { options: [["danio", "Daño"], ["curacion", "Curación"]] }),
       field("area_valor", "Área: multiplicador de daño o curación", "number", { min: 0.1, step: 0.1, value: 0.5 }),
       field("area_coste", "Área: coste de poder", "number", { min: 0, value: 15 }),
+      field("area_pa", "Área: coste de PA", "number", { min: 1, value: 4 }),
+      field("area_danioPoder", "Área: poder que quita por objetivo", "number", { min: 0, value: 0 }),
+      field("area_absorcionPoder", "Área: poder que absorbe por objetivo", "number", { min: 0, value: 0 }),
       field("area_objetivos", "Área: máximo de objetivos (1 a 4)", "number", { min: 1, max: 4, value: 2 }),
+      field("area_alcance", "Área: alcance (vacío = alcance del arma)", "number", { min: 1, max: 3 }),
     ],
     armadura: [
       field("spawnInventory", "Spawnear una copia en el inventario al iniciar cada partida", "checkbox"),
@@ -67,21 +92,26 @@
     ],
     especial: [
       field("spawnInventory", "Spawnear una copia en el inventario al iniciar cada partida", "checkbox"),
+      field("esObjetoMision", "Es un objeto único/de misión (no se puede vender ni descartar)", "checkbox"),
       field("tipo", "Tipo de objeto", "text", { value: "amuleto" }),
       field("danioMoral", "Daño moral", "number", { min: 0, value: 0 }),
       field("proteccionCordura", "Protección de cordura", "number", { min: 0, value: 0 }),
       field("proteccionMoral", "Protección de moral", "number", { min: 0, value: 0 }),
+      ...specialBonusAttributes.map(([name, label]) => field(
+        `bonificacion_${name}`,
+        `Bonificación: ${label}`,
+        "number",
+        name === "bonificacionCritico" ? { min: 0, max: 1, step: 0.01, value: 0 } : { value: 0 },
+      )),
       field("magico", "Es mágico", "checkbox"),
       field("clasesPermitidas", "Clases permitidas", "multiselect", { options: classes }),
     ],
     consumible: [
       field("spawnInventory", "Spawnear una copia en el inventario al iniciar cada partida", "checkbox"),
-      field("tipo", "Tipo", "select", { options: [["pocion", "Poción"], ["grimorio", "Grimorio"]] }),
+      field("tipo", "Tipo", "select", { options: [["pocion", "Poción"]] }),
       field("vida", "Restauración de vida", "number", { min: 0, value: 0 }),
       field("cordura", "Restauración de cordura", "number", { min: 0, value: 0 }),
       field("poder", "Restauración de poder", "number", { min: 0, value: 0 }),
-      field("magico", "Es mágico", "checkbox"),
-      field("clasesPermitidas", "Clases permitidas (grimorios)", "multiselect", { options: classes }),
     ],
   };
   const enemyFields = [
@@ -95,19 +125,36 @@
     field("poderMaximo", "Poder máximo", "number", { min: 1, value: 100 }),
     field("ataqueBase", "Ataque base", "number", { min: 0, value: 3 }),
     field("resistenciaBase", "Resistencia base", "number", { min: 0, value: 1 }),
+    field("resistenciaMagica", "Resistencia mágica", "number", { min: 0, value: 0 }),
     field("agilidad", "Agilidad", "number", { min: 0, value: 3 }),
     field("bonificacionCritico", "Bonificación crítica (0 a 1; 0.08 = 8%)", "number", { min: 0, max: 1, step: 0.01, value: 0 }),
     field("maldito", "Es maldito", "checkbox"),
     field("danioCorduraPorGolpe", "Daño de cordura por golpe", "number", { min: 0, value: 5 }),
     field("danioMoralPorGolpe", "Daño moral por golpe", "number", { min: 0, value: 1 }),
+    field("ataque1Nombre", "Ataque especial 1 (opcional): nombre"),
+    field("ataque1Alcance", "Ataque especial 1: alcance", "number", { min: 1, max: 4, value: 1 }),
+    field("ataque1Multiplicador", "Ataque especial 1: multiplicador de daño", "number", { min: 0.1, step: 0.1, value: 1 }),
+    field("ataque1DanioPoder", "Ataque especial 1: poder que quita", "number", { min: 0, value: 0 }),
+    field("ataque1AbsorcionPoder", "Ataque especial 1: poder que absorbe", "number", { min: 0, value: 0 }),
+    field("ataque2Nombre", "Ataque especial 2 (opcional): nombre"),
+    field("ataque2Alcance", "Ataque especial 2: alcance", "number", { min: 1, max: 4, value: 2 }),
+    field("ataque2Multiplicador", "Ataque especial 2: multiplicador de daño", "number", { min: 0.1, step: 0.1, value: 0.75 }),
+    field("ataque2DanioPoder", "Ataque especial 2: poder que quita", "number", { min: 0, value: 0 }),
+    field("ataque2AbsorcionPoder", "Ataque especial 2: poder que absorbe", "number", { min: 0, value: 0 }),
   ];
   const poiFields = [
     field("id", "ID único del POI (minúsculas y guiones)"),
+    field("titulo", "Título del POI"),
     field("nivel", "Nivel mínimo del mapa", "number", { min: 1, value: 1 }),
+    field("tipo", "Tipo de POI", "select", { options: [["historia", "Historia / escena"], ["tesoro", "Cofre"], ["vendedor", "Vendedor"], ["trampa", "Trampa"]] }),
     field("imagen", "Imagen", "image"),
     field("sonido", "Sonido al abrir el aviso", "audio"),
     field("texto", "Texto descriptivo", "textarea"),
+    field("danio", "Daño si se activa la trampa", "number", { min: 1, value: 30 }),
+    field("probabilidadDesactivacion", "Probabilidad base de desactivación (0 a 1)", "number", { min: 0, max: 1, step: 0.05, value: 0.35 }),
     field("lootId", "Botín opcional", "select", { options: [] }),
+    field("objetoRequeridoId", "Objeto/llave necesario para abrir o investigar", "select", { options: [] }),
+    field("consumirObjetoRequerido", "Consumir el objeto al completar la acción", "checkbox"),
     field("enemigoId", "Enemigo o boss opcional", "select", { options: [] }),
   ];
   const mapFields = [
@@ -375,6 +422,12 @@
       (item) => `${item.nombre} (Nv. ${item.nivel})`,
     );
     refreshOptions(
+      "select[name='objetoRequeridoId']",
+      juego.itemsBase.filter((item) => item.esObjetoMision),
+      "Sin requisito",
+      (item) => item.nombre,
+    );
+    refreshOptions(
       "select[name='enemigoId'], select[name='bossId']",
       juego.poolEncuentros,
       "Sin enemigo",
@@ -424,9 +477,14 @@
     return Number(input?.value ?? 0);
   }
 
+  function optionalNumberValue(name) {
+    const input = getValue(name);
+    return input?.value.trim() ? Number(input.value) : undefined;
+  }
+
   function collectItem(kind) {
     const data = {};
-    ["id", "nombre", "descripcion", "icono", "tipo"].forEach((name) => {
+    ["id", "nombre", "descripcion", "icono", "tipo", "subtipo"].forEach((name) => {
       const input = getValue(name);
       if (input) data[name] = input.value.trim();
     });
@@ -436,11 +494,25 @@
     data.imagen = selectedImage;
     if (["arma", "armadura"].includes(kind)) data.estado = getValue("estado").value;
     data.magico = Boolean(getValue("magico")?.checked);
+    if (kind === "especial") data.esObjetoMision = Boolean(getValue("esObjetoMision")?.checked);
     const checkedClasses = [...form.querySelectorAll("input[name='clasesPermitidas']:checked")].map((input) => input.value);
     data.clasesPermitidas = checkedClasses;
 
     if (kind === "arma") {
-      ["ataque", "alcance", "danioMoral", "danioAgilidad", "danioPoder"].forEach((name) => { data[name] = numberValue(name); });
+      ["ataque", "alcance", "costePABasico", "danioMoral", "danioAgilidad", "danioPoder", "danioElemental"].forEach((name) => { data[name] = numberValue(name); });
+      data.bonificacionesContra = {
+        blindado: numberValue("bonificacionContraBlindado"),
+        maldito: numberValue("bonificacionContraMaldito"),
+      };
+      data.elemento = data.danioElemental > 0 ? getValue("elemento").value.trim() : null;
+      const tipoEfectoCritico = getValue("efectoCritico_tipo").value;
+      data.efectoCritico = tipoEfectoCritico ? {
+        tipo: tipoEfectoCritico,
+        duracion: numberValue("efectoCritico_duracion"),
+        ...(tipoEfectoCritico === "veneno" || tipoEfectoCritico === "quemadura"
+          ? { danioPorTurno: numberValue("efectoCritico_danio") }
+          : {}),
+      } : null;
       data.bonificaciones = Object.fromEntries(bonusAttributes.map(([name]) => [name, numberValue(`bonificacion_${name}`)]));
       data.ataquesEspeciales = {};
       for (const attackType of ["dirigido", "area"]) {
@@ -449,8 +521,15 @@
           nombre: getValue(`${attackType}_nombre`).value.trim(),
           efecto: effect,
           costePoder: numberValue(`${attackType}_coste`),
+          costePA: numberValue(`${attackType}_pa`),
           objetivosMaximos: attackType === "dirigido" ? 1 : numberValue("area_objetivos"),
         };
+        if (effect === "danio") {
+          profile.danioPoder = numberValue(`${attackType}_danioPoder`);
+          profile.absorcionPoder = numberValue(`${attackType}_absorcionPoder`);
+        }
+        const alcance = optionalNumberValue(`${attackType}_alcance`);
+        if (alcance !== undefined) profile.alcance = alcance;
         if (effect === "curacion") profile.curacion = numberValue(`${attackType}_valor`);
         else profile.multiplicadorDanio = numberValue(`${attackType}_valor`);
         data.ataquesEspeciales[attackType] = profile;
@@ -459,6 +538,9 @@
       data.bonificaciones = Object.fromEntries(bonusAttributes.map(([name]) => [name, numberValue(`bonificacion_${name}`)]));
     } else if (kind === "especial") {
       ["danioMoral", "proteccionCordura", "proteccionMoral"].forEach((name) => { data[name] = numberValue(name); });
+      data.bonificaciones = Object.fromEntries(
+        specialBonusAttributes.map(([name]) => [name, numberValue(`bonificacion_${name}`)]),
+      );
     } else {
       data.bonificacion = Object.fromEntries(["vida", "cordura", "poder"].map((name) => [name, numberValue(name)]));
     }
@@ -615,12 +697,22 @@
   function collectEnemy(kind) {
     const data = {};
     ["id", "nombre", "descripcion"].forEach((name) => { data[name] = getValue(name).value.trim(); });
-    ["nivel", "vidaMaxima", "corduraMaxima", "poderMaximo", "ataqueBase", "resistenciaBase", "agilidad", "danioCorduraPorGolpe", "danioMoralPorGolpe"].forEach((name) => {
+    ["nivel", "vidaMaxima", "corduraMaxima", "poderMaximo", "ataqueBase", "resistenciaBase", "resistenciaMagica", "agilidad", "danioCorduraPorGolpe", "danioMoralPorGolpe"].forEach((name) => {
       data[name] = numberValue(name);
     });
     data.bonificacionCritico = numberValue("bonificacionCritico");
     data.maldito = Boolean(getValue("maldito")?.checked);
     data.imagen = selectedImage;
+    data.ataques = [1, 2].flatMap((numero) => {
+      const nombre = getValue(`ataque${numero}Nombre`)?.value.trim();
+      return nombre ? [{
+        nombre,
+        alcance: numberValue(`ataque${numero}Alcance`),
+        multiplicadorDanio: numberValue(`ataque${numero}Multiplicador`),
+        danioPoder: numberValue(`ataque${numero}DanioPoder`),
+        absorcionPoder: numberValue(`ataque${numero}AbsorcionPoder`),
+      }] : [];
+    });
     if (kind === "humano") {
       data.armaId = getValue("armaId").value;
       data.armaduraId = getValue("armaduraId").value;
@@ -631,11 +723,17 @@
   function collectPOI() {
     return {
       id: getValue("id").value.trim(),
+      titulo: getValue("titulo").value.trim(),
       nivel: numberValue("nivel"),
+      tipo: getValue("tipo").value,
       imagen: selectedImage,
       sonido: selectedAudio,
       texto: getValue("texto").value.trim(),
+      danio: numberValue("danio"),
+      probabilidadDesactivacion: numberValue("probabilidadDesactivacion"),
       lootId: getValue("lootId").value,
+      objetoRequeridoId: getValue("objetoRequeridoId").value,
+      consumirObjetoRequerido: Boolean(getValue("consumirObjetoRequerido")?.checked),
       enemigoId: getValue("enemigoId").value,
     };
   }
@@ -736,7 +834,7 @@
         await saveRecordToProject(legacyRecord, true);
       }
       if (saved.length) {
-        try { window.localStorage.removeItem(storageKey); } catch { /* La copia en los archivos ya quedÃ³ guardada. */ }
+        try { window.localStorage.removeItem(storageKey); } catch { /* La copia en los archivos ya quedó guardada. */ }
       }
       await saveRecordToProject(record);
       applyRecord(record);

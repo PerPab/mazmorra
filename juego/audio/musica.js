@@ -10,6 +10,8 @@
   elemento.volume = 0.35;
 
   let rutaActual = null;
+  let listaActual = null;
+  let indiceLista = -1;
   let reintentoPendiente = null;
 
   function detenerReintento() {
@@ -41,23 +43,25 @@
 
   function detener() {
     rutaActual = null;
+    listaActual = null;
+    indiceLista = -1;
     detenerReintento();
+    elemento.onended = null;
     elemento.pause();
     elemento.removeAttribute("src");
     elemento.load();
   }
 
-  // Reproduce una pista en loop. Si la ruta es vacía o igual a la actual en
-  // curso, evita reiniciarla. Devuelve true si arrancó (o ya estaba) la pista.
-  function reproducir(ruta, volumen = 0.35) {
+  function reproducirRuta(ruta, volumen = 0.35) {
     if (!ruta || typeof ruta !== "string") {
       detener();
       return false;
     }
     const cambioRuta = elemento.getAttribute("src") !== ruta;
-    if (!cambioRuta && rutaActual === ruta) return true;
+    if (!cambioRuta && rutaActual === ruta && !elemento.paused) return true;
     detenerReintento();
     elemento.volume = Math.max(0, Math.min(1, volumen));
+    elemento.loop = !listaActual;
     elemento.src = ruta;
     elemento.currentTime = 0;
     rutaActual = ruta;
@@ -65,6 +69,36 @@
     return true;
   }
 
-  juego.musica = { reproducir, detener, get ruta() { return rutaActual; } };
+  // Reproduce una pista en loop o alterna una lista sin reiniciarla cuando
+  // cambia de pantalla y se vuelve a aplicar el mismo contexto.
+  function reproducir(ruta, volumen = 0.35) {
+    if (Array.isArray(ruta)) return reproducirLista(ruta, volumen);
+    listaActual = null;
+    indiceLista = -1;
+    elemento.onended = null;
+    return reproducirRuta(ruta, volumen);
+  }
+
+  function reproducirLista(rutas, volumen = 0.35) {
+    const lista = [...new Set((rutas ?? []).filter((ruta) => typeof ruta === "string" && ruta))];
+    if (!lista.length) {
+      detener();
+      return false;
+    }
+    const mismaLista = listaActual?.length === lista.length
+      && listaActual.every((ruta, indice) => ruta === lista[indice]);
+    if (mismaLista && rutaActual && !elemento.paused) return true;
+    listaActual = lista;
+    indiceLista = 0;
+    elemento.loop = false;
+    elemento.onended = () => {
+      if (!listaActual?.length) return;
+      indiceLista = (indiceLista + 1) % listaActual.length;
+      reproducirRuta(listaActual[indiceLista], volumen);
+    };
+    return reproducirRuta(listaActual[indiceLista], volumen);
+  }
+
+  juego.musica = { reproducir, reproducirLista, detener, get ruta() { return rutaActual; } };
   window.juego = juego;
 })();

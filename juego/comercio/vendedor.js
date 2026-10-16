@@ -1,14 +1,21 @@
 (function inicializarVendedor() {
   const juego = window.juego;
   const dialog = document.querySelector(".merchant-dialog");
+  const storageDialog = document.querySelector(".storage-dialog");
   const stockElement = dialog?.querySelector(".merchant-stock");
   const inventoryElement = dialog?.querySelector(".merchant-inventory");
+  const backpackElement = storageDialog?.querySelector(".storage-backpack");
+  const storedItemsElement = storageDialog?.querySelector(".storage-items");
   const balanceElement = dialog?.querySelector(".merchant-balance");
   const messageElement = dialog?.querySelector(".merchant-message");
   const closeButton = dialog?.querySelector(".merchant-close");
+  const closeStorageButton = storageDialog?.querySelector(".storage-close");
   if (!juego || !(dialog instanceof HTMLDialogElement) || !(stockElement instanceof HTMLElement)
     || !(inventoryElement instanceof HTMLElement) || !(balanceElement instanceof HTMLElement)
-    || !(messageElement instanceof HTMLElement) || !(closeButton instanceof HTMLButtonElement)) return;
+    || !(storageDialog instanceof HTMLDialogElement) || !(backpackElement instanceof HTMLElement)
+    || !(storedItemsElement instanceof HTMLElement) || !(messageElement instanceof HTMLElement)
+    || !(closeButton instanceof HTMLButtonElement)
+    || !(closeStorageButton instanceof HTMLButtonElement)) return;
 
   let stock = [];
   let stockPaquetesRaciones = 0;
@@ -33,7 +40,9 @@
       bonificaciones: item.bonificaciones ? { ...item.bonificaciones } : {},
       bonificacion: item.bonificacion ? { ...item.bonificacion } : undefined,
       ataquesEspeciales: item.ataquesEspeciales ? structuredClone(item.ataquesEspeciales) : undefined,
+      hechizosRestauracion: item.hechizosRestauracion ? structuredClone(item.hechizosRestauracion) : [],
       efectoEstado: item.efectoEstado ? { ...item.efectoEstado } : undefined,
+      efectoCritico: item.efectoCritico ? { ...item.efectoCritico } : undefined,
     });
   }
 
@@ -102,7 +111,8 @@
       ));
     });
     window.inventarioGrupo.items.forEach((item, slotIndex) => {
-      if (!item || item.esObjetoMision) return;
+      if (!item) return;
+      if (item.esObjetoMision) return;
       const precioVenta = precioVentaDelGrupo(item);
       inventoryElement.append(crearEntrada(
         item,
@@ -125,6 +135,43 @@
     if (inventoryElement.childElementCount === 0) inventoryElement.textContent = "No hay objetos para vender.";
   }
 
+  function renderizarCofre() {
+    backpackElement.replaceChildren();
+    storedItemsElement.replaceChildren();
+    window.inventarioGrupo.items.forEach((item, slotIndex) => {
+      if (!item) return;
+      backpackElement.append(crearEntrada(
+        item,
+        item.esObjetoMision ? "Objeto de misión" : "Guardar gratis entre niveles",
+        "Guardar",
+        false,
+        () => {
+          window.inventarioGrupo.guardarEnCofre(slotIndex + 1);
+          juego.sonidos?.reproducir("inventario");
+          renderizar();
+          renderizarCofre();
+        },
+      ));
+    });
+    window.inventarioGrupo.cofreCompartido.forEach((item, index) => {
+      storedItemsElement.append(crearEntrada(
+        item,
+        "Guardado entre niveles · sin costo",
+        "Retirar",
+        !window.inventarioGrupo.items.includes(null),
+        () => {
+          const recuperado = window.inventarioGrupo.retirarDelCofre(index);
+          if (!recuperado) messageElement.textContent = "No hay espacio libre en el inventario del grupo.";
+          juego.sonidos?.reproducir("inventario");
+          renderizar();
+          renderizarCofre();
+        },
+      ));
+    });
+    if (backpackElement.childElementCount === 0) backpackElement.textContent = "La mochila está vacía.";
+    if (storedItemsElement.childElementCount === 0) storedItemsElement.textContent = "El cofre está vacío.";
+  }
+
   function abrir(poi, cerrarPoi) {
     if (!Number.isInteger(poi.stockRaciones)) poi.stockRaciones = 3;
     vendedorActivo = poi;
@@ -143,13 +190,23 @@
   }
 
   closeButton.addEventListener("click", () => dialog.close());
+  closeStorageButton.addEventListener("click", () => storageDialog.close());
   dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  storageDialog.addEventListener("click", (event) => { if (event.target === storageDialog) storageDialog.close(); });
   dialog.addEventListener("close", () => {
     const callback = onClose;
     onClose = null;
     vendedorActivo = null;
     callback?.();
   });
-  window.addEventListener("juego:inventario-actualizado", renderizar);
-  juego.vendedor = { abrir };
+  window.addEventListener("juego:inventario-actualizado", () => {
+    renderizar();
+    if (storageDialog.open) renderizarCofre();
+  });
+  function abrirCofre() {
+    renderizarCofre();
+    if (!storageDialog.open) storageDialog.showModal();
+  }
+
+  juego.vendedor = { abrir, abrirCofre };
 })();

@@ -2,9 +2,13 @@
 const inventario = Array(18).fill(null);
 let monedas = 0;
 let raciones = 0;
+const claveCofreCompartido = "juego.cofreCompartido.v1";
+let cofreCompartido = cargarCofreCompartido();
 const inventoryGrid = document.querySelector(".inventory-grid");
 const currencyDisplay = document.querySelector(".inventory-currency");
 const provisionsDisplay = document.querySelector(".inventory-provisions");
+const restButton = document.querySelector(".inventory-rest");
+const restConfirmDialog = document.querySelector(".rest-confirm-dialog");
 
 if (!(inventoryGrid instanceof HTMLOListElement)) {
   throw new Error('No se encontró la grilla ".inventory-grid".');
@@ -14,6 +18,14 @@ if (!(inventoryGrid instanceof HTMLOListElement)) {
 function renderizarInventario() {
   if (currencyDisplay) currencyDisplay.textContent = `Monedas: ${monedas} \u{1FA99}`;
   if (provisionsDisplay) provisionsDisplay.textContent = `Raciones: ${raciones}`;
+  if (restButton instanceof HTMLButtonElement) {
+    const combateEnCurso = window.juego.combate?.enCurso === true;
+    restButton.disabled = raciones < 10 || combateEnCurso;
+    restButton.textContent = "Descansar";
+    restButton.title = combateEnCurso ? "No se puede descansar durante un combate."
+      : raciones < 10 ? "Se necesitan 10 raciones para descansar."
+        : "Recupera los recursos del grupo consumiendo 10 raciones.";
+  }
   inventoryGrid.replaceChildren();
 
   inventario.forEach((item, index) => {
@@ -62,6 +74,19 @@ function renderizarInventario() {
   });
 }
 
+function cargarCofreCompartido() {
+  try {
+    const objetos = JSON.parse(window.localStorage.getItem(claveCofreCompartido) || "[]");
+    return Array.isArray(objetos) ? objetos : [];
+  } catch {
+    return [];
+  }
+}
+
+function guardarCofreCompartido() {
+  window.localStorage.setItem(claveCofreCompartido, JSON.stringify(cofreCompartido));
+}
+
 // Agrega un objeto en el primer espacio libre y devuelve su número de espacio.
 function agregarItem(item) {
   if (typeof item !== "object" || item === null || typeof item.nombre !== "string" || item.nombre.trim() === "") {
@@ -100,6 +125,55 @@ window.inventarioGrupo = {
   items: inventario,
   get monedas() { return monedas; },
   get raciones() { return raciones; },
+  get cofreCompartido() { return cofreCompartido; },
+  guardarEnCofre(numeroEspacio) {
+    const item = inventario[numeroEspacio - 1];
+    if (!item) throw new Error("Ese espacio del inventario está vacío.");
+    cofreCompartido.push(item);
+    try {
+      guardarCofreCompartido();
+      retirarItem(numeroEspacio);
+    } catch (error) {
+      cofreCompartido.pop();
+      throw error;
+    }
+    return cofreCompartido.length;
+  },
+  retirarDelCofre(indice) {
+    if (!Number.isInteger(indice) || indice < 0 || indice >= cofreCompartido.length) return null;
+    if (!inventario.includes(null)) return null;
+    const [itemGuardado] = cofreCompartido.splice(indice, 1);
+    const item = itemGuardado instanceof window.juego.Item
+      ? itemGuardado
+      : new window.juego.Item(itemGuardado);
+    try {
+      agregarItem(item);
+      guardarCofreCompartido();
+      return item;
+    } catch (error) {
+      cofreCompartido.splice(indice, 0, item);
+      throw error;
+    }
+  },
+  descansar() {
+    if (raciones < 10 || window.juego.combate?.enCurso === true) return false;
+    raciones -= 10;
+    window.juego.personajes
+      .filter((personaje) => personaje.vida.actual > 0)
+      .forEach((personaje) => {
+        personaje.vida.actual = personaje.vida.maxima;
+        personaje.cordura.actual = personaje.cordura.maxima;
+        personaje.poder.actual = personaje.poder.maximo;
+        personaje.puntosAccionTurno = personaje.puntosAccionMaximos;
+        window.juego.actualizarRecursosTarjeta(personaje.id);
+      });
+    (window.juego.personajesCatalogo ?? window.juego.personajes).forEach((personaje) => {
+      personaje.habilidadEspecialAgotada = false;
+    });
+    window.juego.mazmorra?.reiniciarFatigaExploracion?.();
+    renderizarInventario();
+    return true;
+  },
   agregarRaciones(cantidad) {
     if (!Number.isInteger(cantidad) || cantidad < 0) throw new RangeError("Las raciones deben ser un entero no negativo.");
     raciones += cantidad;
@@ -114,6 +188,9 @@ window.inventarioGrupo = {
   },
   iniciarPartida() {
     raciones = 10;
+    (window.juego.personajesCatalogo ?? window.juego.personajes).forEach((personaje) => {
+      personaje.habilidadEspecialAgotada = false;
+    });
     renderizarInventario();
     return raciones;
   },
@@ -133,5 +210,23 @@ window.inventarioGrupo = {
   retirarItem,
   actualizar: renderizarInventario,
 };
+
+restButton?.addEventListener("click", () => restConfirmDialog?.showModal());
+restConfirmDialog?.querySelector(".rest-confirm-cancel")?.addEventListener("click", () => {
+  restConfirmDialog.close();
+});
+restConfirmDialog?.querySelector(".rest-confirm-accept")?.addEventListener("click", () => {
+  if (!window.inventarioGrupo.descansar()) {
+    restConfirmDialog.close();
+    return;
+  }
+  restConfirmDialog.close();
+  window.juego.registrarNovedad?.("El grupo acampa: recupera toda su vida, cordura y poder a cambio de 10 raciones.");
+  window.juego.sonidos?.reproducir("inventario");
+});
+restConfirmDialog?.addEventListener("click", (event) => {
+  if (event.target === restConfirmDialog) restConfirmDialog.close();
+});
+window.addEventListener("juego:estado-encuentro", renderizarInventario);
 
 renderizarInventario();

@@ -13,8 +13,14 @@
   const storyClose = storyDialog?.querySelector(".character-story-close");
   const adventureIntroDialog = document.querySelector(".adventure-intro-dialog");
   const adventureEnter = adventureIntroDialog?.querySelector(".adventure-enter");
-  const storyModeDialog = document.querySelector(".story-mode-dialog");
+  const storyModeDialog = document.querySelector(".story-notice-dialog");
   const storyModeClose = storyModeDialog?.querySelector(".story-mode-close");
+  const storyModeTitle = storyModeDialog?.querySelector("#story-mode-title");
+  const storyModeImage = storyModeDialog?.querySelector(".story-mode-image");
+  const storyModeText = storyModeDialog?.querySelector(".story-mode-text");
+  const storyModePage = storyModeDialog?.querySelector(".story-mode-page");
+  const storyModePrevious = storyModeDialog?.querySelector(".story-mode-previous");
+  const storyModeNext = storyModeDialog?.querySelector(".story-mode-next");
   const tutorialDialog = document.querySelector(".tutorial-dialog");
   const tutorialCloseButtons = tutorialDialog?.querySelectorAll(".tutorial-close, .tutorial-close-icon");
   const gameMenuToggle = gameView?.querySelector(".game-menu-toggle");
@@ -45,6 +51,12 @@
     || !(adventureEnter instanceof HTMLButtonElement)
     || !(storyModeDialog instanceof HTMLDialogElement)
     || !(storyModeClose instanceof HTMLButtonElement)
+    || !(storyModeTitle instanceof HTMLElement)
+    || !(storyModeImage instanceof HTMLImageElement)
+    || !(storyModeText instanceof HTMLElement)
+    || !(storyModePage instanceof HTMLElement)
+    || !(storyModePrevious instanceof HTMLButtonElement)
+    || !(storyModeNext instanceof HTMLButtonElement)
     || !(tutorialDialog instanceof HTMLDialogElement)
     || tutorialCloseButtons.length !== 2
     || !(gameMenuToggle instanceof HTMLButtonElement)
@@ -60,6 +72,38 @@
   }
 
   let adventureStarted = false;
+  const historiaInicial = [
+    {
+      titulo: "La Montaña Negra",
+      texto: "Durante generaciones, los pueblos al pie de la montaña evitaron sus senderos. Ahora, una presencia antigua vuelve a llamar desde las profundidades.",
+      imagen: "recursos/imagen/historia/caballero_hist/Montana_bg.png",
+      alt: "La Montaña Negra bajo un cielo sombrío",
+    },
+    {
+      titulo: "Un llamado en la piedra",
+      texto: "Desaparecen viajeros y las galerías se llenan de susurros. Los pocos que regresan hablan de figuras que caminan mucho después de haber muerto.",
+      imagen: "recursos/imagen/historia/caballero_hist/Man_in_Armor.png",
+      alt: "Una figura acorazada en las galerías oscuras",
+    },
+    {
+      titulo: "Hacia las profundidades",
+      texto: "Reúnes a quienes aún se atreven a descender. Cada paso los acerca a los horrores de la montaña y a la voluntad del Dios Negro.",
+      imagen: "recursos/imagen/historia/sacerdote_hist/Tentacle.png",
+      alt: "Un tentáculo emerge de la oscuridad",
+    },
+  ];
+  let paginaHistoria = 0;
+  function renderizarPaginaHistoria() {
+    const pagina = historiaInicial[paginaHistoria];
+    storyModeTitle.textContent = pagina.titulo;
+    storyModeText.textContent = pagina.texto;
+    storyModeImage.src = pagina.imagen;
+    storyModeImage.alt = pagina.alt;
+    storyModeImage.hidden = false;
+    storyModePage.textContent = `${paginaHistoria + 1} / ${historiaInicial.length}`;
+    storyModePrevious.hidden = paginaHistoria === 0;
+    storyModeNext.textContent = paginaHistoria === historiaInicial.length - 1 ? "Comenzar" : "Siguiente";
+  }
   const storageKey = "juego.combateAutomatico";
   try {
     juego.combateAutomatico = window.localStorage.getItem(storageKey) === "true";
@@ -100,6 +144,10 @@
   // --- Música ---
   // Canción fija del menú y preferencia de encendido/apagado persistida.
   const MENU_MUSIC_SRC = "recursos/sonidos/menu.mp3";
+  const EXPLORATION_MUSIC_SRCS = [
+    "recursos/sonidos/ambiance_1.mp3",
+    "recursos/sonidos/ambiance_2.mp3",
+  ];
   const musicStorageKey = "juego.musica";
   let musicaActiva = true;
   try {
@@ -111,15 +159,15 @@
   function audioMapaActivo() {
     const mapas = juego.mapasBase ?? [];
     const mapa = mapas.find((entry) => entry.id === juego.mapaActivoId) ?? mapas[0];
-    return mapa?.audio ?? null;
+    return mapa?.audio ?? EXPLORATION_MUSIC_SRCS;
   }
 
-  // Reproduce la pista adecuada según el contexto. Al explorar suena la música
-  // del mapa (independiente del switch); fuera del mapa suena la canción fija
-  // del menú solo si la música está activa. El gestor evita reiniciar la misma.
+  // Al explorar usa la música propia del mapa o alterna las pistas de ambiente.
+  // El switch controla la música tanto en el menú como durante la partida.
   function aplicarMusicaContexto(enElMapa) {
     if (!juego.musica) return;
-    juego.musica.reproducir(enElMapa ? audioMapaActivo() : (musicaActiva ? MENU_MUSIC_SRC : null));
+    const pista = musicaActiva ? (enElMapa ? audioMapaActivo() : MENU_MUSIC_SRC) : null;
+    juego.musica.reproducir(pista);
   }
 
   if (musicToggle instanceof HTMLInputElement) {
@@ -133,7 +181,7 @@
       } catch {
         // La preferencia sigue activa durante esta sesión si el navegador bloquea el almacenamiento.
       }
-      if (gameView.hidden) aplicarMusicaContexto(false);
+      aplicarMusicaContexto(!gameView.hidden);
     });
   }
   // Arranca la música del menú al cargar (el gestor reintenta si el navegador
@@ -224,12 +272,17 @@
         break;
       case "new":
         mainMenuStatus.textContent = "";
+        juego.modoPartida = "historia";
+        paginaHistoria = 0;
+        renderizarPaginaHistoria();
         storyModeDialog.showModal();
         break;
       case "skirmish":
         juego.modoPartida = "escaramuza";
         juego.rondaEscaramuza = 1;
         juego.encuentrosExtraEscaramuza = 0;
+        juego.tamanoBaseEscaramuza = 15;
+        juego.gruposBaseEscaramuza = 3;
         mainMenuStatus.textContent = "";
         adventureIntroDialog.showModal();
         break;
@@ -262,6 +315,7 @@
     continueButton.disabled = false;
     juego.nivelMazmorraActual = null;
     window.inventarioGrupo?.iniciarPartida?.();
+    juego.mazmorra?.reiniciarFatigaExploracion?.();
     juego.mazmorra?.iniciar();
     mostrarPantalla("game");
     juego.mazmorra?.setExploracionAutomatica?.(juego.exploracionAutomatica);
@@ -270,6 +324,19 @@
     if (event.target === adventureIntroDialog) adventureIntroDialog.close();
   });
   storyModeClose.addEventListener("click", () => storyModeDialog.close());
+  storyModePrevious.addEventListener("click", () => {
+    paginaHistoria = Math.max(0, paginaHistoria - 1);
+    renderizarPaginaHistoria();
+  });
+  storyModeNext.addEventListener("click", () => {
+    if (paginaHistoria < historiaInicial.length - 1) {
+      paginaHistoria += 1;
+      renderizarPaginaHistoria();
+      return;
+    }
+    storyModeDialog.close();
+    adventureIntroDialog.showModal();
+  });
   storyModeDialog.addEventListener("click", (event) => {
     if (event.target === storyModeDialog) storyModeDialog.close();
   });
@@ -327,11 +394,13 @@
         ["Ataque", entidad.fuerzaEfectiva + (entidad.equipo.arma?.ataque ?? 0)],
         ["Defensa", entidad.resistenciaFisicaCombate], ["Agilidad", entidad.agilidadEfectiva],
         ["Resist. cordura", entidad.resistenciaCorduraCombate],
+        ["Resist. mágica", entidad.resistenciaMagicaCombate],
       ]
       : [
         ["Nivel", entidad.nivel], ["Vida", entidad.vida.maxima],
         ["Ataque", entidad.ataque], ["Defensa", entidad.resistencia], ["Agilidad", entidad.agilidad],
-        ["Resist. cordura", entidad.resistenciaCorduraCombate], ["Poder", entidad.poder.maximo],
+        ["Resist. cordura", entidad.resistenciaCorduraCombate],
+        ["Resist. mágica", entidad.resistenciaMagicaCombate], ["Poder", entidad.poder.maximo],
       ];
     if (entidad.bonificacionCritico > 0) values.push(["Crítico", `${Math.round(entidad.bonificacionCritico * 100)} %`]);
     if (!esPersonaje && entidad.efectoGolpe?.tipo === "veneno") {

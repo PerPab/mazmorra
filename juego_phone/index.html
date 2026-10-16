@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101713">
+    <title>Juego</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="main-menu-screen" id="main-menu-screen" aria-labelledby="main-menu-title">
+      <section class="main-menu-panel">
+        <p class="main-menu-eyebrow">Una aventura de mazmorras</p>
+        <h2 id="main-menu-title">LA MONTAÑA NEGRA</h2>
+        <!--<p class="main-menu-subtitle">El destino del grupo está en tus manos.</p>-->
+        <nav class="main-menu-options" aria-label="Menú principal">
+          <button class="main-menu-button" type="button" data-menu-action="continue" disabled>Continuar aventura</button>
+          <button class="main-menu-button" type="button" data-menu-action="new">Historia</button>
+          <button class="main-menu-button" type="button" data-menu-action="skirmish">Escaramuza</button>
+          <button class="main-menu-button" type="button" data-menu-action="bestiary">Bestiario</button>
+          <button class="main-menu-button" type="button" data-menu-action="tutorial">Tutorial</button>
+          <button class="main-menu-button main-menu-button-secondary" type="button" data-menu-action="options">Opciones</button>
+        </nav>
+        <p class="main-menu-status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <main class="bestiary-screen" id="bestiary-screen" aria-labelledby="bestiary-title" hidden>
+      <section class="bestiary-page">
+        <header class="bestiary-header">
+          <p class="main-menu-eyebrow">Guía de criaturas y aventureros</p>
+          <h1 id="bestiary-title">Bestiario</h1>
+        </header>
+        <div class="bestiary-list"></div>
+        <button class="main-menu-button bestiary-back" type="button">Volver al menú</button>
+      </section>
+    </main>
+
+    <dialog class="character-story-dialog" aria-labelledby="character-story-title">
+      <header class="character-story-header">
+        <div>
+          <p class="character-story-eyebrow">Crónicas de los elegidos</p>
+          <h2 id="character-story-title"></h2>
+        </div>
+        <button class="character-story-close" type="button" aria-label="Cerrar trasfondo">&times;</button>
+      </header>
+      <article class="character-story-content"></article>
+    </dialog>
+
+    <dialog class="phone-character-select-dialog" aria-labelledby="phone-character-select-title">
+      <h2 id="phone-character-select-title">Elige a tu aventurero</h2>
+      <p>En esta expedición controlarás a un solo personaje.</p>
+      <div class="phone-character-options"></div>
+          <button class="main-menu-button phone-character-select-back" type="button">Volver</button>
+    </dialog>
+
+    <dialog class="story-mode-dialog story-notice-dialog" aria-labelledby="story-mode-title">
+      <p class="story-mode-eyebrow">Crónicas de la Montaña Negra</p>
+      <h2 id="story-mode-title"></h2>
+      <img class="story-mode-image" alt="" hidden>
+      <p class="story-mode-text"></p>
+      <p class="story-mode-page" aria-live="polite"></p>
+      <nav class="story-mode-controls" aria-label="Páginas de la historia">
+        <button class="story-mode-previous" type="button">Anterior</button>
+        <button class="story-mode-next" type="button">Siguiente</button>
+        <button class="story-mode-close" type="button">Volver al menú</button>
+      </nav>
+    </dialog>
+
+    <dialog class="adventure-intro-dialog" aria-label="Introducción a la mazmorra">
+      <img class="adventure-intro-image" alt="" hidden>
+      <p class="adventure-intro-description"></p>
+      <button class="adventure-enter" type="button">Entrar en la mazmorra</button>
+    </dialog>
+
+    <dialog class="tutorial-dialog" aria-labelledby="tutorial-title">
+      <header class="tutorial-header">
+        <div>
+          <p class="main-menu-eyebrow">Manual del aventurero</p>
+          <h2 id="tutorial-title">Tutorial</h2>
+        </div>
+        <button class="tutorial-close-icon" type="button" aria-label="Cerrar tutorial">&times;</button>
+      </header>
+      <article class="tutorial-content">
+        <section>
+          <h3>Movimiento</h3>
+          <p>Usa las flechas del panel o las teclas de dirección para mover al grupo. Se consume una ración cada cinco casillas. Sin comida, la fatiga aumenta cada cinco pasos y eleva el riesgo de emboscada; comer reduce la fatiga.</p>
+          <p>El mapa se descubre mientras avanzas. Al encontrar un punto de interés, el grupo se detiene y muestra un aviso antes de permitirte continuar.</p>
+        </section>
+        <section>
+          <h3>Combate</h3>
+          <p>Al comenzar cada turno recibes PA según tu agilidad efectiva: 3 + 1 por cada 3 puntos de agilidad, hasta un máximo de 6. Un ataque básico cuesta 2 PA, uno dirigido 3 y uno de área 4. Cubrirte o usar un consumible cuesta 1 PA; cambiar equipo cuesta 2. Puedes encadenar acciones mientras tengas PA o terminar el turno. Si te cubres y terminas el turno con PA restantes, los guardas para contraatacar al primer enemigo que te acierte. La tarjeta muestra tus PA disponibles y cada ataque indica su daño aproximado y los costes de PA y poder. El poder recupera 3 puntos al comienzo de cada turno. El alcance limita a qué fila enemiga puedes atacar.</p>
+          <p>Los ataques pueden fallar. Las habilidades especiales consumen poder; algunos ataques también pueden curar, dañar atributos o aplicar efectos como veneno, quemadura y parálisis.</p>
+        </section>
+        <section>
+          <h3>Formación</h3>
+          <p>En esta versión controlas un solo personaje. Si muere, queda fuera de combate y no puede revivirse; la poción de resurrección está deshabilitada.</p>
+        </section>
+        <section>
+          <h3>Botín y equipo</h3>
+          <p>Al derrotar enemigos, el grupo recibe una ración por cada enemigo derrotado. El equipo que aparezca como botín se puede enviar al inventario desde el panel de encuentro. Los cofres pueden contener objetos, monedas y raciones. La cordura reduce gradualmente la eficacia de combate, pero no hace que el personaje pierda el turno ni huya automáticamente.</p>
+          <p>Desde el inventario puedes equipar armas, armaduras y objetos especiales. Las armas y armaduras usadas en combate pierden eficacia con el tiempo; compara su estado antes de cambiar el equipo.</p>
+        </section>
+        <section>
+          <h3>Exploración automática</h3>
+          <p>Actívala en Opciones para que el grupo busque el punto de interés pendiente más cercano por un camino transitable. La marcha se detiene al encontrar un POI para que decidas qué hacer. El combate automático se configura por separado.</p>
+        </section>
+        <section>
+          <h3>Escaramuza e historia</h3>
+          <p>Escaramuza es una expedición roguelike: escala enemigos y encuentros al avanzar, coloca un jefe cada dos niveles y conserva cofres y trampas. No incluye POI narrativos ni vendedores aleatorios.</p>
+          <p>Historia usa mapas diseñados a mano y POI colocados en coordenadas fijas para contar escenas con imágenes y texto. Los encuentros normales siguen apareciendo aleatoriamente.</p>
+        </section>
+      </article>
+      <footer class="tutorial-footer">
+        <button class="tutorial-close" type="button">Volver al menú</button>
+      </footer>
+    </dialog>
+
+    <dialog class="adventure-intro-dialog level-transition-dialog" aria-label="Nivel 2">
+      <button class="adventure-enter level-transition-close" type="button">Cerrar</button>
+    </dialog>
+
+    <div class="game-view" id="game-view" hidden>
+      <header class="game-topbar">
+        <button
+          class="game-menu-toggle"
+          type="button"
+          aria-label="Abrir menú de juego"
+          aria-expanded="false"
+          aria-controls="game-menu-panel"
+        >
+          <span></span><span></span><span></span>
+        </button>
+        <p class="game-topbar-title">Nivel 1</p>
+        <div class="game-topbar-resources" aria-label="Recursos del grupo">
+          <p class="inventory-currency" aria-live="polite">Monedas: 0 &#129689;</p>
+          <p class="inventory-provisions" aria-live="polite">Raciones: 0</p>
+          <p class="inventory-fatigue" aria-live="polite">Fatiga: 0/6</p>
+        </div>
+        <nav class="game-menu-panel" id="game-menu-panel" aria-label="Menú de juego" hidden>
+          <button class="game-menu-return" type="button">Salir al menú principal</button>
+        </nav>
+      </header>
+    <main class="game-screen" aria-label="Interfaz del juego">
+      <aside class="interface-column interface-column-left" aria-label="Inventario compartido del grupo">
+        <button class="inventory-rest" type="button" disabled>Descansar</button>
+        <ol class="inventory-grid" aria-label="Espacios del inventario"></ol>
+      </aside>
+      <section class="interface-center" aria-label="Área principal del juego">
+        <section class="scene-panel" aria-label="Escena del juego y futuros encuentros">
+          <figure class="exploration-scene" hidden>
+            <img class="exploration-scene-image" alt="">
+          </figure>
+          <div class="encounter-enemies" role="list" aria-label="Enemigos del encuentro" hidden></div>
+          <div class="phone-notice" role="status" aria-live="polite" hidden></div>
+        </section>
+      </section>
+      <aside class="interface-column interface-column-right" aria-label="Mapa y controles de movimiento">
+        <section class="map-panel" aria-label="Mapa de la mazmorra">
+          <h2 class="map-panel-title">Mapa</h2>
+          <div class="map-display" aria-label="Mapa de la mazmorra" aria-live="polite"></div>
+        </section>
+        <nav class="movement-panel" aria-label="Controles de dirección">
+          <button class="direction-button direction-up" data-direction="up" type="button" aria-label="Mover al norte" title="Mover al norte" disabled>&#x2191;</button>
+          <button class="direction-button direction-left" data-direction="left" type="button" aria-label="Mover al oeste" title="Mover al oeste" disabled>&#x2190;</button>
+          <button class="direction-button direction-down" data-direction="down" type="button" aria-label="Mover al sur" title="Mover al sur" disabled>&#x2193;</button>
+          <button class="direction-button direction-right" data-direction="right" type="button" aria-label="Mover al este" title="Mover al este" disabled>&#x2192;</button>
+        </nav>
+      </aside>
+    </main>
+
+    <section class="player-bar" aria-label="Pantalla de grupo">
+      <article class="player-card" data-character-id="caballero-maldito" aria-roledescription="tarjeta de aliado">
+        <div class="player-card-header">
+          <div class="player-card-name-row"><h2 class="character-open">Caballero</h2></div>
+        </div>
+        <div class="player-card-resources" aria-label="Recursos del personaje"></div>
+        <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
+          <span class="player-experience-label"></span>
+          <span class="player-experience-track"><span class="player-experience-fill"></span></span>
+        </div>
+        <div class="player-equipment" aria-label="Equipo equipado">
+          <button class="player-equipment-slot" type="button" data-equipment-slot="armadura" aria-label="Espacio de armadura vacío" title="Armadura" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="arma" aria-label="Espacio de arma vacío" title="Arma" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
+        </div>
+      </article>
+      <article class="player-card" data-character-id="bruja" aria-roledescription="tarjeta de aliado">
+        <div class="player-card-header">
+          <div class="player-card-name-row"><h2 class="character-open">Bruja</h2></div>
+        </div>
+        <div class="player-card-resources" aria-label="Recursos del personaje"></div>
+        <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
+          <span class="player-experience-label"></span>
+          <span class="player-experience-track"><span class="player-experience-fill"></span></span>
+        </div>
+        <div class="player-equipment" aria-label="Equipo equipado">
+          <button class="player-equipment-slot" type="button" data-equipment-slot="armadura" aria-label="Espacio de armadura vacío" title="Armadura" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="arma" aria-label="Espacio de arma vacío" title="Arma" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
+        </div>
+      </article>
+      <article class="player-card" data-character-id="sacerdote-condenado" aria-roledescription="tarjeta de aliado">
+        <div class="player-card-header">
+          <div class="player-card-name-row"><h2 class="character-open">Sacerdote</h2></div>
+        </div>
+        <div class="player-card-resources" aria-label="Recursos del personaje"></div>
+        <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
+          <span class="player-experience-label"></span>
+          <span class="player-experience-track"><span class="player-experience-fill"></span></span>
+        </div>
+        <div class="player-equipment" aria-label="Equipo equipado">
+          <button class="player-equipment-slot" type="button" data-equipment-slot="armadura" aria-label="Espacio de armadura vacío" title="Armadura" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="arma" aria-label="Espacio de arma vacío" title="Arma" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
+        </div>
+      </article>
+      <article class="player-card" data-character-id="asesino" aria-roledescription="tarjeta de aliado">
+        <div class="player-card-header">
+          <div class="player-card-name-row"><h2 class="character-open">Asesino</h2></div>
+        </div>
+        <div class="player-card-resources" aria-label="Recursos del personaje"></div>
+        <div class="player-card-progression" role="progressbar" aria-valuemin="0" aria-valuenow="0" aria-valuemax="100">
+          <span class="player-experience-label"></span>
+          <span class="player-experience-track"><span class="player-experience-fill"></span></span>
+        </div>
+        <div class="player-equipment" aria-label="Equipo equipado">
+          <button class="player-equipment-slot" type="button" data-equipment-slot="armadura" aria-label="Espacio de armadura vacío" title="Armadura" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="arma" aria-label="Espacio de arma vacío" title="Arma" disabled></button>
+          <button class="player-equipment-slot" type="button" data-equipment-slot="especial" aria-label="Espacio de ítem especial vacío" title="Ítem especial" disabled></button>
+        </div>
+      </article>
+    </section>
+    </div>
+
+    <dialog class="character-dialog" aria-labelledby="character-dialog-title">
+      <div class="character-dialog-header">
+        <div>
+          <p class="character-dialog-eyebrow">Ficha de personaje</p>
+          <img class="dialog-portrait" alt="">
+          <button class="character-story-open" type="button">Historia</button>
+          <h2 id="character-dialog-title"></h2>
+          <p class="character-meta"></p>
+        </div>
+        <button class="dialog-close" type="button" aria-label="Cerrar ficha">&times;</button>
+      </div>
+      <p class="provisional-note">Los porcentajes y cantidades de las habilidades quedan pendientes de definir.</p>
+
+      <section class="dialog-section" aria-labelledby="character-resources-title">
+        <h3 id="character-resources-title">Recursos</h3>
+        <dl class="character-resources">
+          <div><dt>Vida</dt><dd data-resource="vida">Por definir</dd></div>
+          <div><dt>Cordura</dt><dd data-resource="cordura">Por definir</dd></div>
+          <div><dt>Poder</dt><dd data-resource="poder">Por definir</dd></div>
+        </dl>
+      </section>
+
+      <section class="dialog-section" aria-labelledby="character-attributes-title">
+        <h3 id="character-attributes-title">Atributos</h3>
+        <p class="skill-points">Los atributos mejoran mediante el equipo.</p>
+        <ul class="attribute-list"></ul>
+      </section>
+
+      <section class="dialog-section" aria-labelledby="character-equipment-title">
+        <h3 id="character-equipment-title">Equipo</h3>
+        <dl class="equipment-list">
+          <div><dt>Arma</dt><dd data-equipment="arma">Sin equipo</dd></div>
+          <div><dt>Armadura</dt><dd data-equipment="armadura">Sin equipo</dd></div>
+          <div><dt>Ítem especial</dt><dd data-equipment="especial">Sin equipo</dd></div>
+        </dl>
+      </section>
+
+      <section class="dialog-section" aria-labelledby="character-passive-title">
+        <h3 id="character-passive-title">Pasiva</h3>
+        <p class="character-passive"></p>
+      </section>
+
+      <section class="dialog-section" aria-labelledby="character-buff-title">
+        <h3 id="character-buff-title">Habilidad de grupo</h3>
+        <p class="character-buff"></p>
+      </section>
+      <div class="character-dialog-actions">
+        <button class="dialog-accept" type="button">Cerrar</button>
+      </div>
+    </dialog>
+    <dialog class="equipment-actions-dialog" aria-labelledby="equipment-actions-title">
+      <h2 id="equipment-actions-title"></h2>
+      <p class="equipment-actions-description"></p>
+      <div class="equipment-actions">
+        <button class="equipment-unequip" type="button">Desequipar al inventario</button>
+        <button class="equipment-drop" type="button">Soltar (descartar)</button>
+        <button class="equipment-actions-close" type="button">Cerrar</button>
+      </div>
+    </dialog>
+    <dialog class="inventory-item-dialog" aria-labelledby="inventory-item-title">
+      <h2 id="inventory-item-title"></h2>
+      <p class="inventory-item-description"></p>
+      <img class="inventory-item-image" alt="" hidden>
+      <div class="inventory-character-options" aria-label="Personajes que pueden recibir el objeto" hidden></div>
+      <div class="inventory-item-actions">
+        <button class="inventory-equip-use" type="button">Equipar</button>
+        <button class="inventory-drop" type="button">Soltar</button>
+        <button class="inventory-item-close" type="button">Cerrar</button>
+      </div>
+    </dialog>
+    <dialog class="poi-dialog" aria-labelledby="poi-dialog-title">
+      <div class="poi-dialog-header">
+        <p class="poi-dialog-eyebrow">Encuentro en la mazmorra</p>
+        <h2 class="poi-title" id="poi-dialog-title"></h2>
+      </div>
+      <img class="poi-image" alt="" hidden>
+      <p class="poi-description"></p>
+      <div class="poi-dialog-actions">
+        <button class="poi-action" type="button" hidden></button>
+        <button class="poi-storage" type="button" hidden>Guardar</button>
+        <button class="encounter-start" type="button" hidden>Comenzar encuentro</button>
+        <button class="poi-close" type="button">Cerrar</button>
+      </div>
+    </dialog>
+    <dialog class="merchant-dialog" aria-labelledby="merchant-title">
+      <header class="merchant-header">
+        <div><p class="poi-dialog-eyebrow">Comerciante de la mazmorra</p><h2 id="merchant-title">Mercader enano</h2></div>
+        <p class="merchant-balance" aria-live="polite"></p>
+      </header>
+      <p class="merchant-message" aria-live="polite">Revisa el género o vende lo que ya no necesites.</p>
+      <div class="merchant-columns">
+        <section><h3>Mercancía</h3><div class="merchant-stock" aria-label="Mercancía del vendedor"></div></section>
+        <section><h3>Inventario del grupo</h3><div class="merchant-inventory" aria-label="Objetos del grupo"></div></section>
+      </div>
+      <button class="merchant-close" type="button">Cerrar</button>
+    </dialog>
+    <dialog class="storage-dialog" aria-labelledby="storage-title">
+      <h2 id="storage-title">Cofre compartido</h2>
+      <div class="storage-columns">
+        <section><h3>Inventario del grupo</h3><div class="storage-backpack" aria-label="Objetos disponibles para guardar"></div></section>
+        <section><h3>Cofre</h3><div class="storage-items" aria-label="Objetos guardados"></div></section>
+      </div>
+      <button class="storage-close" type="button">Volver</button>
+    </dialog>
+    <dialog class="rest-confirm-dialog" aria-labelledby="rest-confirm-title">
+      <h2 id="rest-confirm-title">¿Quieres descansar?</h2>
+      <img src="recursos/imagen/especiales/fogata_r.jpg" alt="Una fogata en un refugio de piedra">
+      <p>Recuperarás todos tus recursos, pero consumirás 10 provisiones.</p>
+      <div class="rest-confirm-actions">
+        <button class="rest-confirm-accept" type="button">Aceptar</button>
+        <button class="rest-confirm-cancel" type="button">Cancelar</button>
+      </div>
+    </dialog>
+    <dialog class="character-death-dialog" aria-labelledby="character-death-title">
+      <h2 id="character-death-title">Has muerto</h2>
+      <img class="character-death-image" src="recursos/imagen/historia/tumba_1.png" alt="Una tumba en la oscuridad">
+      <p class="character-death-description"></p>
+      <button class="character-death-close" type="button">Cerrar</button>
+    </dialog>
+    <dialog class="combat-action-dialog" aria-labelledby="combat-action-title">
+      <h2 id="combat-action-title"></h2>
+      <p class="combat-action-status"></p>
+      <div class="combat-action-options" aria-label="Ataques disponibles"></div>
+    </dialog>
+    <dialog class="options-dialog" aria-labelledby="options-title">
+      <h2 id="options-title">Opciones</h2>
+      <label class="options-toggle" for="automatic-combat-toggle">
+        <input id="automatic-combat-toggle" type="checkbox" role="switch" aria-checked="false">
+        <span>Combate automático</span>
+      </label>
+      <label class="options-toggle" for="automatic-exploration-toggle">
+        <input id="automatic-exploration-toggle" type="checkbox" role="switch" aria-checked="false">
+        <span>Exploración automática</span>
+      </label>
+      <label class="options-toggle" for="music-toggle">
+        <input id="music-toggle" type="checkbox" role="switch" aria-checked="true">
+        <span>Música</span>
+      </label>
+      <button class="options-close options-resource-open" type="button">Cargar recurso</button>
+      <button class="options-close options-poi-open" type="button">Cargar POI</button>
+      <button class="options-close options-map-open" type="button">Cargar mapa</button>
+      <button class="options-close options-back" type="button">Volver</button>
+    </dialog>
+    <dialog class="resource-editor-dialog" aria-labelledby="resource-editor-title">
+      <h2 id="resource-editor-title">Cargar recurso</h2>
+      <label class="resource-field">
+        <span>Que quieres cargar</span>
+        <select class="resource-kind">
+          <option value="arma">Arma</option>
+          <option value="armadura">Armadura</option>
+          <option value="especial">Objeto especial</option>
+          <option value="consumible">Consumible</option>
+          <option value="humano">Enemigo humano</option>
+          <option value="criatura">Criatura</option>
+          <option value="poi">Punto de interés</option>
+          <option value="mapa">Mapa</option>
+        </select>
+      </label>
+      <form class="resource-form">
+        <div class="resource-fields"></div>
+        <p class="resource-status" role="status" aria-live="polite"></p>
+        <div class="resource-actions">
+          <button class="resource-save" type="submit">Guardar recurso</button>
+          <button class="resource-close" type="button">Volver</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="general/notificaciones.js" defer></script>
+    <script src="item/progresionEquipo.js" defer></script>
+    <script src="item/item.js" defer></script>
+    <script src="item/hechizosRestauracion.js" defer></script>
+    <script src="item/propiedadesArmadura.js" defer></script>
+    <script src="item/propiedadesAnillo.js" defer></script>
+    <script src="item/armadurasBase.js" defer></script>
+    <script src="item/armasBase.js" defer></script>
+    <script src="item/objetosEspecialesBase.js" defer></script>
+    <script src="item/consumiblesBase.js" defer></script>
+    <script src="item/itemsBase.js" defer></script>
+    <script src="combate/probabilidades.js" defer></script>
+    <script src="enemigo/enemigo.js" defer></script>
+    <script src="enemigo/criaturasBase.js" defer></script>
+    <script src="enemigo/enemigosBase.js" defer></script>
+    <script src="datos/puntosInteresBase.js" defer></script>
+    <script src="datos/puntosInteresCreados.js" defer></script>
+    <script src="datos/mapasBase.js" defer></script>
+    <script src="datos/mapasCreados.js" defer></script>
+    <script src="niveles/demo.js" defer></script>
+    <script src="niveles/nivel_1.js" defer></script>
+    <script src="niveles/nivel_2.js" defer></script>
+    <script src="app/recurso-editor.js" defer></script>
+    <script src="personaje/personaje.js" defer></script>
+    <script src="personaje/personajesBase.js" defer></script>
+    <script src="historias/trasfondos.js" defer></script>
+    <script src="personaje/personajes.js" defer></script>
+    <script src="personaje/progresion.js" defer></script>
+    <script src="audio/sonidos.js" defer></script>
+    <script src="audio/musica.js" defer></script>
+    <script src="inventario/inventario.js" defer></script>
+    <script src="personaje/equipo.js" defer></script>
+    <script src="personaje/modalPersonaje.js" defer></script>
+    <script src="combate/combate.js?v=2" defer></script>
+    <script src="exploracion/generadorMazmorra.js" defer></script>
+    <script src="exploracion/mazmorra.js" defer></script>
+    <script src="comercio/vendedor.js" defer></script>
+    <script src="app/menu.js" defer></script>
+  </body>
+</html>

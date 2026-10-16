@@ -29,12 +29,37 @@
     if (typeof bonificaciones !== "object" || bonificaciones === null || Array.isArray(bonificaciones)) {
       throw new TypeError("bonificaciones debe ser un objeto de atributos.");
     }
-    const atributos = ["resistenciaFisica", "resistenciaCordura", "fuerza", "agilidad", "poder"];
+    const atributos = [
+      "resistenciaFisica", "resistenciaCordura", "resistenciaMagica", "fuerza", "agilidad",
+      "poder", "vida", "cordura", "puntosAccion", "danioFisico", "danioMagico", "bonificacionCritico",
+    ];
     if (Object.keys(bonificaciones).some((key) => !atributos.includes(key))) {
       throw new TypeError("bonificaciones contiene un atributo de equipo desconocido.");
     }
     atributos.forEach((key) => {
-      if (bonificaciones[key] !== undefined) validarEntero(`bonificaciones.${key}`, bonificaciones[key]);
+      if (bonificaciones[key] === undefined) return;
+      if (key === "bonificacionCritico") {
+        if (!Number.isFinite(bonificaciones[key]) || bonificaciones[key] < 0 || bonificaciones[key] > 1) {
+          throw new RangeError("bonificaciones.bonificacionCritico debe estar entre 0 y 1.");
+        }
+      } else {
+        validarEntero(`bonificaciones.${key}`, bonificaciones[key]);
+      }
+    });
+  }
+
+  function validarBonificacionesContra(bonificacionesContra) {
+    if (typeof bonificacionesContra !== "object" || bonificacionesContra === null || Array.isArray(bonificacionesContra)) {
+      throw new TypeError("bonificacionesContra debe ser un objeto.");
+    }
+    const condiciones = ["blindado", "maldito"];
+    if (Object.keys(bonificacionesContra).some((condicion) => !condiciones.includes(condicion))) {
+      throw new TypeError("bonificacionesContra solo admite blindado y maldito.");
+    }
+    Object.entries(bonificacionesContra).forEach(([condicion, valor]) => {
+      if (!Number.isFinite(valor) || valor < 0 || valor > 1) {
+        throw new RangeError(`bonificacionesContra.${condicion} debe estar entre 0 y 1.`);
+      }
     });
   }
 
@@ -51,6 +76,32 @@
         throw new RangeError(`${nombreCampo} debe causar al menos 1 punto de daño por turno.`);
       }
     }
+  }
+
+  function validarHechizosRestauracion(hechizos) {
+    if (!Array.isArray(hechizos)) throw new TypeError("hechizosRestauracion debe ser una lista.");
+    hechizos.forEach((hechizo, indice) => {
+      if (!hechizo || typeof hechizo !== "object" || Array.isArray(hechizo)) {
+        throw new TypeError(`hechizosRestauracion[${indice}] debe ser un objeto.`);
+      }
+      validarTexto(`hechizosRestauracion[${indice}].id`, hechizo.id);
+      validarTexto(`hechizosRestauracion[${indice}].nombre`, hechizo.nombre);
+      if (!["curacion", "cordura", "proteccion"].includes(hechizo.efecto)) {
+        throw new TypeError(`hechizosRestauracion[${indice}].efecto no es válido.`);
+      }
+      if (!["aliado", "grupo"].includes(hechizo.objetivo)) {
+        throw new TypeError(`hechizosRestauracion[${indice}].objetivo debe ser aliado o grupo.`);
+      }
+      validarEnteroNoNegativo(`hechizosRestauracion[${indice}].costePA`, hechizo.costePA);
+      validarEnteroNoNegativo(`hechizosRestauracion[${indice}].costePoder`, hechizo.costePoder);
+      if (hechizo.costePA < 1) throw new RangeError("Un hechizo restaurativo debe costar al menos 1 PA.");
+      if (hechizo.efecto === "curacion") validarEnteroNoNegativo("curacion", hechizo.curacion);
+      if (hechizo.efecto === "cordura") validarEnteroNoNegativo("restauracion", hechizo.restauracion);
+      if (hechizo.efecto === "proteccion"
+        && (!Number.isFinite(hechizo.porcentaje) || hechizo.porcentaje <= 0 || hechizo.porcentaje > 1)) {
+        throw new RangeError("La protección mágica debe ser un porcentaje entre 0 y 1.");
+      }
+    });
   }
   const ATAQUES_ESPECIALES_PREDETERMINADOS = {
     dirigido: {
@@ -79,26 +130,36 @@
       id,
       categoria,
       tipo,
+      subtipo,
       nombre,
       descripcion,
       nivel,
+      rango,
+      plantillaId = null,
+      efectos = [],
       valor,
+      pesoBotin = 1,
       clasesPermitidas,
       magico = false,
       imagen,
       icono = "✦",
       ataque,
       alcance,
+      costePABasico,
       danioMoral,
       danioPoder = 0,
       danioAgilidad = 0,
+      danioElemental = 0,
+      elemento = null,
+      efectoCritico = null,
       proteccion,
       ataquesEspeciales,
+      hechizosRestauracion = [],
       proteccionCordura,
       proteccionMoral,
       bonificacion,
-      efectoEstado,
       bonificaciones = {},
+      bonificacionesContra = {},
       estado,
       durabilidad,
       esObjetoMision = false,
@@ -111,7 +172,22 @@
       validarTexto("descripcion", descripcion);
       validarTexto("icono", icono);
       validarEnteroNoNegativo("nivel", nivel);
+      const rangoCalculado = window.juego?.obtenerRangoEquipo?.(nivel) ?? "basico";
+      const rangoFinal = rango ?? rangoCalculado;
+      if (!["basico", "medio", "avanzado"].includes(rangoFinal)) {
+        throw new RangeError('rango debe ser "basico", "medio" o "avanzado".');
+      }
+      if (plantillaId !== null && (typeof plantillaId !== "string" || plantillaId.trim() === "")) {
+        throw new TypeError("plantillaId debe ser un ID de plantilla o null.");
+      }
+      if (!Array.isArray(efectos)
+        || efectos.some((efecto) => typeof efecto !== "string" || efecto.trim() === "")) {
+        throw new TypeError("efectos debe ser una lista de IDs de propiedades.");
+      }
       if (valor !== undefined) validarEnteroNoNegativo("valor", valor);
+      if (!Number.isFinite(pesoBotin) || pesoBotin <= 0) {
+        throw new RangeError("pesoBotin debe ser un número mayor que cero.");
+      }
 
       if (nivel < 1) {
         throw new RangeError("nivel debe ser al menos 1.");
@@ -135,17 +211,10 @@
       }
 
       const clases = clasesPermitidas ?? [];
-      if (!Array.isArray(clases)
-        || (categoria !== "consumible" && clases.length === 0)
-        || (categoria === "consumible" && tipo.trim().toLowerCase() === "grimorio" && clases.length === 0)) {
-        throw new TypeError("clasesPermitidas debe contener al menos una clase para armas, armaduras y grimorios.");
+      if (!Array.isArray(clases) || (categoria !== "consumible" && clases.length === 0)) {
+        throw new TypeError("clasesPermitidas debe contener al menos una clase para armas y armaduras.");
       }
       clases.forEach((clase) => validarTexto("clase permitida", clase));
-      if (categoria === "consumible"
-        && tipo.trim().toLowerCase() === "grimorio"
-        && clases.some((clase) => !["bruja", "sacerdote"].includes(clase.trim().toLowerCase()))) {
-        throw new TypeError("Un grimorio solo puede ser usado por la Bruja o el Sacerdote.");
-      }
 
       if (typeof magico !== "boolean") {
         throw new TypeError("magico debe ser un valor booleano.");
@@ -156,19 +225,34 @@
       if (typeof revivir !== "boolean" || (revivir && categoria !== "consumible")) {
         throw new TypeError("revivir solo puede activarse en un consumible.");
       }
-      if (tipo.trim().toLowerCase() === "grimorio" && !magico) {
-        throw new TypeError("Un grimorio debe ser mágico.");
+      validarBonificacionesContra(bonificacionesContra);
+      if (categoria !== "arma" && Object.keys(bonificacionesContra).length > 0) {
+        throw new TypeError("Solo las armas pueden tener bonificaciones contra enemigos.");
       }
 
       validarRutaImagen(imagen);
 
       if (categoria === "arma") {
+        validarHechizosRestauracion(hechizosRestauracion);
+        if (hechizosRestauracion.length > 0 && (!magico || tipo.toLowerCase() !== "libro")) {
+          throw new TypeError("Solo un libro mágico puede contener hechizos restaurativos.");
+        }
         validarBonificaciones(bonificaciones);
         validarEnteroNoNegativo("ataque", ataque);
         validarEnteroNoNegativo("alcance", alcance);
+        validarEnteroNoNegativo("costePABasico", costePABasico ?? 2);
+        if ((costePABasico ?? 2) < 1) throw new RangeError("costePABasico debe ser al menos 1.");
         validarEnteroNoNegativo("danioMoral", danioMoral);
         validarEnteroNoNegativo("danioPoder", danioPoder);
         validarEnteroNoNegativo("danioAgilidad", danioAgilidad);
+        validarEnteroNoNegativo("danioElemental", danioElemental);
+        if ((danioElemental > 0 && (typeof elemento !== "string" || !elemento.trim()))
+          || (danioElemental === 0 && elemento !== null && elemento !== undefined)) {
+          throw new TypeError("elemento debe acompañar a un daño elemental positivo.");
+        }
+        if (efectoCritico !== null && efectoCritico !== undefined) {
+          validarEfectoEstado("efectoCritico", efectoCritico);
+        }
         const perfilesAtaque = ataquesEspeciales ?? ATAQUES_ESPECIALES_PREDETERMINADOS;
         for (const tipoAtaque of ["dirigido", "area"]) {
           const perfil = perfilesAtaque[tipoAtaque];
@@ -187,12 +271,31 @@
             }
           }
           if (efecto === "danio"
+            && !Number.isFinite(perfil.danio)
             && (!Number.isFinite(perfil.multiplicadorDanio) || perfil.multiplicadorDanio <= 0)) {
-            throw new RangeError(`${tipoAtaque}.multiplicadorDanio debe ser mayor que cero.`);
+            throw new RangeError(`${tipoAtaque} debe definir danio o un multiplicador de daño válido.`);
+          }
+          if (perfil.danio !== undefined) {
+            validarEnteroNoNegativo(`${tipoAtaque}.danio`, perfil.danio);
+            if (perfil.danio < 1) throw new RangeError(`${tipoAtaque}.danio debe ser al menos 1.`);
+          }
+          validarEnteroNoNegativo(`${tipoAtaque}.danioPoder`, perfil.danioPoder ?? 0);
+          validarEnteroNoNegativo(`${tipoAtaque}.absorcionPoder`, perfil.absorcionPoder ?? 0);
+          if (efecto === "curacion" && ((perfil.danioPoder ?? 0) > 0 || (perfil.absorcionPoder ?? 0) > 0)) {
+            throw new TypeError(`${tipoAtaque}: una curacion no puede quitar ni absorber poder.`);
           }
           validarEnteroNoNegativo(`${tipoAtaque}.costePoder`, perfil.costePoder);
+          validarEnteroNoNegativo(`${tipoAtaque}.costePA`, perfil.costePA ?? (tipoAtaque === "dirigido" ? 3 : 4));
+          if ((perfil.costePA ?? (tipoAtaque === "dirigido" ? 3 : 4)) < 1) {
+            throw new RangeError(`${tipoAtaque}.costePA debe ser al menos 1.`);
+          }
           validarEnteroNoNegativo(`${tipoAtaque}.objetivosMaximos`, perfil.objetivosMaximos);
-          if (perfil.efectoEstado !== undefined) {
+          const alcancePerfil = perfil.alcance ?? alcance;
+          validarEnteroNoNegativo(`${tipoAtaque}.alcance`, alcancePerfil);
+          if (alcancePerfil < 1 || alcancePerfil > MAXIMO_ALCANCE) {
+            throw new RangeError(`${tipoAtaque}.alcance debe estar entre 1 y ${MAXIMO_ALCANCE}.`);
+          }
+          if (perfil.efectoEstado !== undefined && perfil.efectoEstado !== null) {
             validarEfectoEstado(`${tipoAtaque}.efectoEstado`, perfil.efectoEstado);
           }
           if (tipoAtaque === "dirigido" && perfil.objetivosMaximos !== 1) {
@@ -214,6 +317,7 @@
         }
         if (ataque !== undefined
           || alcance !== undefined
+          || costePABasico !== undefined
           || danioMoral !== undefined
           || proteccionCordura !== undefined
           || proteccionMoral !== undefined
@@ -228,7 +332,7 @@
         validarEnteroNoNegativo("proteccion", proteccion ?? bonificaciones.resistenciaFisica ?? 0);
         validarBonificaciones(bonificaciones);
       } else if (categoria === "especial") {
-        if (ataquesEspeciales !== undefined) {
+        if (ataquesEspeciales !== undefined || costePABasico !== undefined) {
           throw new TypeError("Solo un arma puede definir ataques especiales.");
         }
         const danioMoralEspecial = danioMoral ?? 0;
@@ -242,14 +346,16 @@
           || danioPoder !== 0 || danioAgilidad !== 0) {
           throw new TypeError("Un objeto especial no puede definir ataques ni bonificación de consumible.");
         }
-        if (!esObjetoMision && danioMoralEspecial + proteccionCorduraEspecial + proteccionMoralEspecial === 0) {
+        const totalBonificaciones = Object.values(bonificaciones).reduce((total, valor) => total + valor, 0);
+        if (!esObjetoMision
+          && danioMoralEspecial + proteccionCorduraEspecial + proteccionMoralEspecial + totalBonificaciones === 0) {
           throw new RangeError("Un objeto especial debe aportar daño moral o alguna protección.");
         }
       } else {
         if (ataquesEspeciales !== undefined) {
           throw new TypeError("Solo un arma puede definir ataques especiales.");
         }
-        if (ataque !== undefined || alcance !== undefined || danioMoral !== undefined
+        if (ataque !== undefined || alcance !== undefined || costePABasico !== undefined || danioMoral !== undefined
           || danioPoder !== 0 || danioAgilidad !== 0
           || Object.keys(bonificaciones).length > 0) {
           throw new TypeError("Un consumible no puede definir atributos de equipo ni daño.");
@@ -268,30 +374,33 @@
             throw new RangeError("La bonificacion debe aumentar al menos un recurso.");
           }
         }
-        if (efectoEstado !== undefined) {
-          validarEfectoEstado("efectoEstado", efectoEstado);
-        }
-        if (bonificacion === undefined && efectoEstado === undefined) {
-          throw new TypeError("Un consumible debe definir una bonificacion o aplicar un efecto de estado.");
+        if (bonificacion === undefined) {
+          throw new TypeError("Un consumible debe definir una bonificacion.");
         }
       }
 
       if (categoria !== "consumible" && bonificacion !== undefined) {
         throw new TypeError("Solo los consumibles pueden definir bonificacion.");
       }
-      if (categoria !== "consumible" && efectoEstado !== undefined) {
-        throw new TypeError("Solo un consumible puede definir efectoEstado.");
-      }
       if (typeof bonificaciones !== "object" || bonificaciones === null || Array.isArray(bonificaciones)) {
         throw new TypeError("bonificaciones debe ser un objeto de atributos.");
       }
-      const atributosEquipo = ["resistenciaFisica", "resistenciaCordura", "fuerza", "agilidad", "poder"];
+      const atributosEquipo = [
+        "resistenciaFisica", "resistenciaCordura", "resistenciaMagica", "fuerza", "agilidad",
+        "poder", "vida", "cordura", "puntosAccion", "danioFisico", "danioMagico", "bonificacionCritico",
+      ];
       if (Object.keys(bonificaciones).some((key) => !atributosEquipo.includes(key))) {
         throw new TypeError("bonificaciones contiene un atributo de equipo desconocido.");
       }
       atributosEquipo.forEach((key) => {
         if (bonificaciones[key] !== undefined) {
-          validarEntero(`bonificaciones.${key}`, bonificaciones[key]);
+          if (key === "bonificacionCritico") {
+            if (!Number.isFinite(bonificaciones[key]) || bonificaciones[key] < 0 || bonificaciones[key] > 1) {
+              throw new RangeError("bonificaciones.bonificacionCritico debe estar entre 0 y 1.");
+            }
+          } else {
+            validarEntero(`bonificaciones.${key}`, bonificaciones[key]);
+          }
         }
       });
       if (categoria === "consumible" && Object.keys(bonificaciones).length > 0) {
@@ -301,15 +410,22 @@
       this.id = id.trim();
       this.categoria = categoria;
       this.tipo = tipo.trim();
+      this.subtipo = subtipo?.trim() || null;
       this.nombre = nombre.trim();
       this.descripcion = descripcion.trim();
       this.nivel = nivel;
+      this.rango = rangoFinal;
+      this.plantillaId = plantillaId?.trim() ?? null;
+      this.efectos = [...new Set(efectos.map((efecto) => efecto.trim()))];
       this.valor = valor ?? Math.max(1, nivel * (categoria === "especial" ? 25 : categoria === "consumible" ? 10 : 20));
+      this.pesoBotin = pesoBotin;
       this.clasesPermitidas = clases.map((clase) => clase.trim().toLowerCase());
       this.magico = magico;
       this.esObjetoMision = esObjetoMision;
       this.revivir = revivir;
-      this.efectoEstado = efectoEstado ? { ...efectoEstado } : undefined;
+      this.danioElemental = danioElemental;
+      this.elemento = elemento?.trim() ?? null;
+      this.efectoCritico = efectoCritico ? { ...efectoCritico } : null;
       this.imagen = imagen.trim();
       this.icono = icono.trim();
 
@@ -318,17 +434,37 @@
         this.estado = this.obtenerEstadoPorDurabilidad();
         this.ataque = ataque;
         this.alcance = alcance;
-        this.danioMoral = danioMoral;
-        this.danioPoder = danioPoder;
-        this.danioAgilidad = danioAgilidad;
-        this.bonificaciones = { ...bonificaciones };
+        this.costePABasico = costePABasico ?? 2;
+        this.danioMoral = danioMoral ?? 0;
+        this.danioPoder = danioPoder ?? 0;
+        this.danioAgilidad = danioAgilidad ?? 0;
+        const atributosArma = [
+          "resistenciaFisica", "resistenciaCordura", "resistenciaMagica", "fuerza", "agilidad",
+          "poder", "vida", "cordura", "puntosAccion", "danioFisico", "danioMagico", "bonificacionCritico",
+        ];
+        this.bonificaciones = {
+          ...Object.fromEntries(atributosArma.map((atributo) => [atributo, 0])),
+          ...bonificaciones,
+        };
+        this.bonificacionesContra = { blindado: 0, maldito: 0, ...bonificacionesContra };
         const perfilesAtaque = ataquesEspeciales ?? ATAQUES_ESPECIALES_PREDETERMINADOS;
         this.ataquesEspeciales = Object.fromEntries(
           ["dirigido", "area"].map((tipoAtaque) => [
             tipoAtaque,
-            { efecto: "danio", ...perfilesAtaque[tipoAtaque] },
+            {
+              efecto: "danio",
+              ...perfilesAtaque[tipoAtaque],
+              alcance: perfilesAtaque[tipoAtaque].alcance ?? alcance,
+              costePA: perfilesAtaque[tipoAtaque].costePA ?? (tipoAtaque === "dirigido" ? 3 : 4),
+              danioPoder: perfilesAtaque[tipoAtaque].danioPoder ?? 0,
+              absorcionPoder: perfilesAtaque[tipoAtaque].absorcionPoder ?? 0,
+              efectoEstado: perfilesAtaque[tipoAtaque].efectoEstado
+                ? { ...perfilesAtaque[tipoAtaque].efectoEstado }
+                : null,
+            },
           ]),
         );
+        this.hechizosRestauracion = hechizosRestauracion.map((hechizo) => ({ ...hechizo }));
       } else if (categoria === "armadura") {
         this.durabilidad = durabilidad ?? Math.round(ESTADOS_EQUIPO[estado ?? "optimo"].eficacia * 100);
         this.estado = this.obtenerEstadoPorDurabilidad();
@@ -338,7 +474,12 @@
         this.danioMoral = danioMoral ?? 0;
         this.proteccionCordura = proteccionCordura ?? 0;
         this.proteccionMoral = proteccionMoral ?? 0;
-        this.bonificaciones = { ...bonificaciones };
+        this.bonificaciones = {
+          resistenciaFisica: 0, resistenciaCordura: 0, resistenciaMagica: 0, fuerza: 0,
+          agilidad: 0, poder: 0, vida: 0, cordura: 0, puntosAccion: 0,
+          danioFisico: 0, danioMagico: 0, bonificacionCritico: 0,
+          ...bonificaciones,
+        };
       } else {
         this.bonificacion = bonificacion ? { ...bonificacion } : undefined;
       }

@@ -29,11 +29,13 @@ class Personaje {
     poderMaximo,
     resistenciaFisica,
     resistenciaCordura,
+    resistenciaMagica = 0,
     fuerza,
     agilidad,
     danioMoral = 1,
     bonificacionCritico = 0,
     proteccionEmboscada = 0,
+    mitigacionDanioGrupo = 0,
     puntosHabilidad = 0,
     experiencia = 0,
     experienciaNecesaria = 100,
@@ -61,6 +63,7 @@ class Personaje {
       poderMaximo,
       resistenciaFisica,
       resistenciaCordura,
+      resistenciaMagica,
       fuerza,
       agilidad,
       danioMoral,
@@ -75,6 +78,9 @@ class Personaje {
     }
     if (!Number.isFinite(proteccionEmboscada) || proteccionEmboscada < 0 || proteccionEmboscada > 1) {
       throw new RangeError("proteccionEmboscada debe estar entre 0 y 1.");
+    }
+    if (!Number.isFinite(mitigacionDanioGrupo) || mitigacionDanioGrupo < 0 || mitigacionDanioGrupo > 1) {
+      throw new RangeError("mitigacionDanioGrupo debe estar entre 0 y 1.");
     }
 
     if (experienciaNecesaria < 1) {
@@ -98,6 +104,7 @@ class Personaje {
     for (const [nombreCampo, valor] of Object.entries({
       resistenciaFisica,
       resistenciaCordura,
+      resistenciaMagica,
       fuerza,
       agilidad,
     })) {
@@ -124,11 +131,14 @@ class Personaje {
     this.poderMaximoBase = poderMaximo;
     this.resistenciaFisica = resistenciaFisica;
     this.resistenciaCordura = resistenciaCordura;
+    this.resistenciaMagica = resistenciaMagica;
     this.fuerza = fuerza;
     this.agilidad = agilidad;
     this.danioMoral = danioMoral;
     this.bonificacionCritico = bonificacionCritico;
     this.proteccionEmboscada = proteccionEmboscada;
+    this.mitigacionDanioGrupo = mitigacionDanioGrupo;
+    this.habilidadEspecialAgotada = false;
     this.puntosHabilidad = puntosHabilidad;
     this.experiencia = experiencia;
     this.experienciaNecesaria = experienciaNecesaria;
@@ -144,7 +154,10 @@ class Personaje {
   }
 
   get probabilidadCritico() {
-    return window.juego.calcularProbabilidadCritico(this.agilidadCombate, this.bonificacionCritico);
+    return window.juego.calcularProbabilidadCritico(
+      this.agilidadCombate,
+      this.bonificacionCritico + this.obtenerBonificacionEquipo("bonificacionCritico"),
+    );
   }
 
   get eficienciaCombate() {
@@ -179,8 +192,21 @@ class Personaje {
     return Math.floor((this.resistenciaCordura + this.obtenerResistenciaEquipo("resistenciaCordura")) * this.eficienciaCombate);
   }
 
+  get resistenciaMagicaCombate() {
+    return Math.floor(
+      (this.resistenciaMagica + this.obtenerResistenciaEquipo("resistenciaMagica")) * this.eficienciaCombate,
+    );
+  }
+
   get agilidadEfectiva() {
     return this.agilidad + this.obtenerBonificacionEquipo("agilidad");
+  }
+
+  get puntosAccionMaximos() {
+    const puntosPorAgilidad = 3 + Math.floor(Math.max(0, this.agilidadEfectiva) / 3);
+    const minimoCaballero = this.id === "caballero-maldito" ? 4 : 3;
+    const puntosBase = Math.min(6, Math.max(minimoCaballero, puntosPorAgilidad));
+    return puntosBase + Math.max(0, this.obtenerBonificacionEquipo("puntosAccion"));
   }
 
   get fuerzaEfectiva() {

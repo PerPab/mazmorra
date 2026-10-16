@@ -21,7 +21,7 @@
     throw new Error("No se cargaron los personajes jugables.");
   }
 
-  // Estos son los atributos que pueden mejorarse con puntos de habilidad.
+  // Se muestran como referencia; las mejoras de atributos provienen del equipo.
   const upgradableAttributes = [
     ["resistenciaFisica", "Resistencia física"],
     ["resistenciaCordura", "Resistencia de cordura"],
@@ -38,20 +38,26 @@
   }
 
   function etiquetaAtributo(attribute) {
-    return ({ resistenciaFisica: "resistencia física", resistenciaCordura: "resistencia de cordura", fuerza: "fuerza", agilidad: "agilidad", poder: "poder" })[attribute] ?? attribute;
-  }
-
-  function actualizarBonificacionPoder(character) {
-    const total = character.obtenerBonificacionEquipo("poder");
-    character.poder.maximo = Math.max(1, Math.round(character.poderMaximoBase + total));
-    character.poder.actual = Math.min(character.poder.actual, character.poder.maximo);
-    character._bonificacionPoderEquipo = total;
+    return ({
+      resistenciaFisica: "resistencia física",
+      resistenciaCordura: "resistencia de cordura",
+      cordura: "Cordura máxima",
+      puntosAccion: "Puntos de acción",
+      resistenciaMagica: "resistencia mágica",
+      fuerza: "fuerza",
+      agilidad: "agilidad",
+      poder: "poder máximo",
+      vida: "vida máxima",
+      danioFisico: "daño físico",
+      danioMagico: "daño mágico",
+      bonificacionCritico: "crítico",
+    })[attribute] ?? attribute;
   }
 
   // Crea una copia editable para que cerrar el modal descarte los cambios.
   function createCharacterDraft(character) {
     return {
-      skillPoints: character.puntosHabilidad,
+      skillPoints: 0,
       attributes: Object.fromEntries(
         upgradableAttributes.map(([key]) => [key, character[key]]),
       ),
@@ -69,11 +75,11 @@
 
     const points = characterDialog.querySelector(".skill-points strong");
     const attributeList = characterDialog.querySelector(".attribute-list");
-    if (!(points instanceof HTMLElement) || !(attributeList instanceof HTMLUListElement)) {
-      throw new Error("Faltan los controles de atributos en la ficha del personaje.");
+    if (!(attributeList instanceof HTMLUListElement)) {
+      throw new Error("Falta la lista de atributos en la ficha del personaje.");
     }
 
-    points.textContent = String(characterDraft.skillPoints);
+    if (points instanceof HTMLElement) points.textContent = "0";
     attributeList.replaceChildren();
 
     upgradableAttributes.forEach(([key, label]) => {
@@ -103,6 +109,7 @@
 
       const pointButtons = document.createElement("span");
       pointButtons.className = "attribute-point-buttons";
+      pointButtons.hidden = true;
 
       const decreaseButton = document.createElement("button");
       decreaseButton.className = "attribute-decrease";
@@ -125,6 +132,16 @@
       row.append(attributeName, controls);
       attributeList.append(row);
     });
+
+    const magicResistanceRow = document.createElement("li");
+    magicResistanceRow.className = "attribute-row attribute-row-readonly";
+    const magicResistanceLabel = document.createElement("span");
+    magicResistanceLabel.textContent = "Resistencia mágica";
+    const magicResistanceValue = document.createElement("span");
+    magicResistanceValue.className = "attribute-value";
+    magicResistanceValue.textContent = String(activeCharacter.resistenciaMagicaCombate);
+    magicResistanceRow.append(magicResistanceLabel, magicResistanceValue);
+    attributeList.append(magicResistanceRow);
 
   }
 
@@ -190,7 +207,9 @@
           }
           const bonuses = Object.entries(item.bonificaciones ?? {})
             .filter(([, value]) => value > 0)
-            .map(([key, value]) => `+${value} ${etiquetaAtributo(key)}`);
+            .map(([key, value]) => key === "bonificacionCritico"
+              ? `+${Math.round(value * 100)} % crítico`
+              : `+${value} ${etiquetaAtributo(key)}`);
           if (item.categoria === "arma") bonuses.unshift(`+${item.ataque} ataque`);
           if (item.categoria === "arma" && item.danioAgilidad > 0) bonuses.push(`−${item.danioAgilidad} agilidad al objetivo`);
           if (item.categoria === "arma" && item.danioPoder > 0) bonuses.push(`−${item.danioPoder} poder al objetivo`);
@@ -268,11 +287,6 @@
     }
 
     activeCharacter.puntosHabilidad = characterDraft.skillPoints;
-    upgradableAttributes.forEach(([key]) => {
-      activeCharacter[key] = characterDraft.attributes[key];
-    });
-    actualizarBonificacionPoder(activeCharacter);
-    juego.actualizarRecursosTarjeta(activeCharacter.id);
     characterDialog.close();
   });
 
